@@ -1,0 +1,16 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skladnia Pythona
+        run: python3 -m compileall -q YTDark
+      - name: Skladnia skryptow
+        run: sh -n install.sh && sh -n tools/build_ipk.sh && sh -n tools/set_repo.sh

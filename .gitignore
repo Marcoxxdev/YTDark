@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+.DS_Store
+# NIGDY nie dodawaj danych logowania ani lokalnej konfiguracji
+ytdark.json
+ytdark_credentials.json
+ytdark.log

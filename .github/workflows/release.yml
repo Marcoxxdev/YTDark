@@ -1,0 +1,33 @@
+name: Release
+# Wydanie: zmien __version__ w YTDark/__init__.py, dopisz CHANGELOG.md, potem:
+#   git tag vX.Y.Z && git push --tags
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zgodnosc tagu z wersja
+        run: |
+          VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' YTDark/__init__.py)
+          [ "v$VER" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME nie pasuje do wersji v$VER"; exit 1; }
+          echo "VER=$VER" >> "$GITHUB_ENV"
+      - name: Skladnia Pythona
+        run: python3 -m compileall -q YTDark
+      - name: Opis wydania z CHANGELOG.md
+        run: |
+          awk -v v="$VER" 'index($0, "## [" v "]") == 1 {f=1; next} /^## /{f=0} f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Wydanie $VER" > notes.md
+      - name: Budowa paczek
+        run: sh tools/build_ipk.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: |
+            dist/YTDark.zip
+            dist/YTDark.zip.sha256
+            dist/*.ipk
