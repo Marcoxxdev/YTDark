@@ -1,7 +1,14 @@
 # Historia zmian
 
+## [2.3.1]
+- Naprawiono błąd: wyjście z ekranu wyszukiwania (Wstecz) wywalało Enigmę (`'list' object is not callable`).
+
+## [2.3.0]
+- Nowe wyszukiwanie: własna klawiatura ekranowa z podpowiedziami YouTube na żywo (jedyny tryb wyszukiwania);
+  zachowane pisanie cyframi jak w telefonie, klawiatura USB i ostatnie wyszukiwania.
+- Usunięto przełącznik podpowiedzi i stary ekran wyszukiwania.
+
 ## [2.2.0]
-- Wyszukiwanie z podpowiedziami na żywo (pisanie pilotem jak w telefonie, klawiatura USB, ostatnie wyszukiwania).
 - Domyślny odtwarzacz: exteplayer3 (jeśli jest w obrazie, inaczej gstreamer); zmiana w Ustawieniach.
 - Sprawdzanie yt-dlp przy starcie: gdy brak `python3-yt-dlp`, plugin pyta o instalację przez opkg;
   instalacja i aktualizacja działają w tle (Ustawienia → yt-dlp).

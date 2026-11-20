@@ -139,7 +139,7 @@ def player(width):
 
 
 def search(width):
-    """Ekran wyszukiwania: pole tekstowe, lista podpowiedzi i ciaga klawiszy."""
+    """Ekran wyszukiwania: pole tekstowe, klawiatura ekranowa (lewo) i podpowiedzi (prawo)."""
     b = _B(width)
     L = ['<screen name="YTDarkSearch" position="0,0" size="%d,%d" title="Szukaj" backgroundColor="%s" '
          'flags="wfNoBorder">' % (b.W, b.H, BG)]
@@ -148,16 +148,19 @@ def search(width):
     L.append(b.rect(80, 150, 1760, 92, BORDER, 1))
     L.append(b.rect(82, 152, 1756, 88, PANEL, 2))
     L.append(b.label('input', 110, 158, 1700, 76, 46, TXT, bg=PANEL, extra='noWrap="1" '))
-    # lista podpowiedzi
-    L.append(b.rect(80, 262, 1180, 718, BORDER, 1))
-    L.append(b.rect(82, 264, 1176, 714, PANEL, 2))
+    # klawiatura ekranowa (kafelki rysuje plugin)
+    L.append(b.rect(80, 262, 760, 452, BORDER, 1))
+    L.append(b.rect(82, 264, 756, 448, PANEL, 2))
+    L.append('<widget name="kb" position="%s" size="%s" foregroundColor="%s" backgroundColor="%s" '
+             'foregroundColorSelected="%s" backgroundColorSelected="%s" scrollbarMode="showNever" '
+             'transparent="0" zPosition="4" />' % (b.pos(88, 270), b.size(744, 432), TXT, PANEL, TXT, PANEL))
+    L.append(b.label('help', 80, 730, 760, 250, 24, MUTED, valign='top'))
+    # podpowiedzi
+    L.append(b.rect(860, 262, 980, 718, BORDER, 1))
+    L.append(b.rect(862, 264, 976, 714, PANEL, 2))
     L.append('<widget name="list" position="%s" size="%s" foregroundColor="%s" backgroundColor="%s" '
              'foregroundColorSelected="%s" backgroundColorSelected="%s" scrollbarMode="showNever" '
-             'transparent="0" zPosition="4" />' % (b.pos(88, 270), b.size(1164, 704), TXT, PANEL, '#ffffff', SEL_BG))
-    # prawy panel: pomoc
-    L.append(b.rect(1280, 262, 560, 718, BORDER, 1))
-    L.append(b.rect(1282, 264, 556, 714, PANEL, 2))
-    L.append(b.label('help', 1305, 284, 510, 680, 26, MUTED, valign='top', bg=PANEL))
+             'transparent="0" zPosition="4" />' % (b.pos(868, 270), b.size(964, 704), TXT, PANEL, '#ffffff', SEL_BG))
     L += b.buttons((('key_red', '#c0392b'), ('key_green', '#2e9e5b'),
                     ('key_yellow', '#d4a72c'), ('key_blue', '#2f6fbf')))
     L.append('</screen>')

@@ -43,11 +43,11 @@ PILOT W TRAKCIE FILMU
   Next / Prev              - nastepny / poprzedni film z listy
   OK                       - pokaz / ukryj pasek
 
-WYSZUKIWANIE Z PODPOWIEDZIAMI: pole tekstowe + lista podpowiedzi YouTube na zywo.
-  Cyfry 2-9 pisza jak w telefonie (kilka nacisniec = kolejna litera, w tym polskie znaki),
-  Lewo = usun znak, Prawo = wstaw podpowiedz, Gora/Dol = wybor, OK = szukaj,
-  Zolty = pelna klawiatura ekranowa, Niebieski = wyczysc. Klawiatura USB dziala.
-  Przy pustym polu widac ostatnie wyszukiwania. Wylaczenie: Ustawienia -> Podpowiedzi.
+WYSZUKIWANIE: wlasna klawiatura ekranowa po lewej i podpowiedzi YouTube na zywo po prawej.
+  Strzalki = wybor klawisza, OK = wpisz znak, Zolty = przejscie do podpowiedzi i z powrotem
+  (w podpowiedziach: Gora/Dol, OK = szukaj, Prawo = wstaw do pola), Zielony = szukaj,
+  Niebieski = usun znak. Dziala tez pisanie cyframi jak w telefonie i klawiatura USB.
+  Przy pustym polu widac ostatnie wyszukiwania.
 
 YT-DLP: przy starcie plugin sprawdza, czy jest zainstalowany python3-yt-dlp. Gdy go
   brak, pyta, czy zainstalowac (opkg update + opkg install python3-yt-dlp). Instalacja

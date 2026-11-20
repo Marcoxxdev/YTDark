@@ -21,6 +21,7 @@ from Screens.Standby import TryQuitMainloop
 from Screens.Screen import Screen
 from Screens.VirtualKeyBoard import VirtualKeyBoard
 from enigma import (
+    RT_HALIGN_CENTER,
     RT_HALIGN_LEFT,
     RT_HALIGN_RIGHT,
     RT_VALIGN_CENTER,
@@ -1061,42 +1062,64 @@ MULTITAP = {'1': u' 1.,-_@', '2': u'abcąć2', '3': u'defę3', '4': u'ghi4', '5'
             '6': u'mnońó6', '7': u'pqrsś7', '8': u'tuv8', '9': u'wxyzźż9', '0': u' 0'}
 MULTITAP_WINDOW = 1.1  # sekundy na kolejne nacisniecie tego samego klawisza
 
-SEARCH_HELP = (u'Pisanie\n'
-               u'Cyfry 2-9: litery (kilka razy = kolejna litera)\n'
-               u'Lewo: usuń znak    Prawo: wstaw podpowiedź\n\n'
-               u'Wybór\n'
-               u'Góra/Dół: podpowiedzi    OK: szukaj\n\n'
-               u'Kolorowe\n'
-               u'Zielony: szukaj wpisanej frazy\n'
-               u'Żółty: pełna klawiatura ekranowa\n'
-               u'Niebieski: wyczyść pole\n\n'
+# klawiatura ekranowa: (napis, szerokosc w kafelkach, wartosc); siatka ma 10 kolumn
+KB_ROWS = [
+    [(c, 1, c) for c in u'1234567890'],
+    [(c, 1, c) for c in u'qwertyuiop'],
+    [(c, 1, c) for c in u'asdfghjklł'],
+    [(c, 1, c) for c in u'zxcvbnmóąę'],
+    [(c, 1, c) for c in u'ćńśźż'] + [(u'spacja', 2, u' '), (u'Usuń', 1, 'BS'), (u'Szukaj', 2, 'GO')],
+]
+KB_CELL, KB_ROW_H = 74, 84
+C_KEY, C_KEY_DIM = 0x272727, 0x555555
+
+SEARCH_HELP = (u'Strzałki: wybór klawisza, OK: wpisz\n'
+               u'Żółty: przejdź do podpowiedzi i z powrotem\n'
+               u'W podpowiedziach: Góra/Dół, OK = szukaj,\n'
+               u'Prawo = wstaw do pola\n'
+               u'Zielony: szukaj    Niebieski: usuń znak\n'
+               u'Cyfry: pisanie jak w telefonie\n'
                u'Klawiatura USB też działa.')
 
 
+class KbMenu(MenuList):
+    def __init__(self):
+        MenuList.__init__(self, [], False, eListboxPythonMultiContent)
+        self.l.setItemHeight(S(KB_ROW_H))
+        self.l.setFont(0, gFont('Regular', S(36)))
+        self.l.setFont(1, gFont('Regular', S(26)))
+        try:
+            self.selectionEnabled(0)
+        except Exception:
+            pass
+
+
 class SearchScreen(Screen):
-    """Pole tekstowe + podpowiedzi YouTube na zywo (i ostatnie wyszukiwania przy pustym polu)."""
+    """Pole tekstowe + wlasna klawiatura ekranowa + podpowiedzi YouTube na zywo."""
 
     def __init__(self, session):
         Screen.__init__(self, session)
         self.skin = skins.search(WIDTH)
         self.text = u''
         self.sugs = []
-        self.items = []
+        self.entries = []
+        self.focus = 'keys'   # 'keys' = klawiatura, 'list' = podpowiedzi
+        self.kr, self.kc = 1, 0
         self.last_digit, self.last_time = None, 0.0
         self.alive = True
         self['title'] = Label(u'Szukaj')
-        self['subtitle'] = Label(u'Wpisuj - podpowiedzi pojawiają się na bieżąco')
+        self['subtitle'] = Label(u'Klawiatura ekranowa i podpowiedzi na żywo')
         self['mode'] = Label(u'\u25CF Zalogowano' if auth.is_logged_in() else u'\u25CF Tryb gościa')
         self['input'] = Label(u'_')
+        self['kb'] = KbMenu()
         self['list'] = HubMenu()
         self['help'] = Label(SEARCH_HELP)
         for key, text in (('key_red', u'Wstecz'), ('key_green', u'Szukaj'),
-                          ('key_yellow', u'Klawiatura'), ('key_blue', u'Wyczyść')):
+                          ('key_yellow', u'Podpowiedzi'), ('key_blue', u'Usuń znak')):
             self[key] = Label(text)
-        actions = {'ok': self.ok, 'cancel': self.close, 'red': self.close, 'green': self.search_text,
-                   'yellow': self.keyboard, 'blue': self.clear,
-                   'up': self['list'].up, 'down': self['list'].down,
-                   'left': self.backspace, 'right': self.complete}
+        actions = {'ok': self.key_ok, 'cancel': self.close, 'red': self.close, 'green': self.search_text,
+                   'yellow': self.toggle_focus, 'blue': self.backspace,
+                   'up': self.key_up, 'down': self.key_down, 'left': self.key_left, 'right': self.key_right}
         for d in '0123456789':
             actions[d] = (lambda digit=d: self.digit(digit))
         self['actions'] = ActionMap(['OkCancelActions', 'ColorActions', 'DirectionActions', 'NumberActions'],
@@ -1106,11 +1129,84 @@ class SearchScreen(Screen):
         self.sug_timer = eTimer()
         connect_timer(self.sug_timer, self.request_sugs, self.holder)
         self.onClose.append(self.shutdown)
-        self.onLayoutFinish.append(self.rebuild)
+        self.onLayoutFinish.append(self.start)
+
+    def start(self):
+        self.rebuild()
+        self.kb_refresh()
 
     def shutdown(self):
         self.alive = False
         self.sug_timer.stop()
+
+    # ------------------------------------------------------------ klawiatura ekranowa
+    def kb_refresh(self):
+        rows = []
+        for r, row in enumerate(KB_ROWS):
+            entry = [None]
+            col = 0
+            for ci, (label, span, value) in enumerate(row):
+                selected = (r == self.kr and ci == self.kc)
+                back = (C_ACCENT if self.focus == 'keys' else C_KEY_DIM) if selected else C_KEY
+                entry.append(MultiContentEntryText(
+                    pos=(S(KB_CELL * col + 2), S(4)), size=(S(KB_CELL * span - 4), S(KB_ROW_H - 8)),
+                    font=0 if len(label) == 1 else 1, flags=RT_HALIGN_CENTER | RT_VALIGN_CENTER,
+                    text=label, color=C_TEXT, color_sel=C_TEXT, backcolor=back, backcolor_sel=back))
+                col += span
+            rows.append(entry)
+        self['kb'].l.setList(rows)
+
+    @staticmethod
+    def _start_col(row, idx):
+        return sum(c[1] for c in row[:idx])
+
+    def kb_move(self, dr, dc):
+        row = KB_ROWS[self.kr]
+        if dc:
+            self.kc = (self.kc + dc) % len(row)
+        if dr:
+            col = self._start_col(row, self.kc)
+            nr = max(0, min(len(KB_ROWS) - 1, self.kr + dr))
+            if nr != self.kr:
+                self.kr = nr
+                for ci, (_l, span, _v) in enumerate(KB_ROWS[nr]):
+                    if self._start_col(KB_ROWS[nr], ci) <= col < self._start_col(KB_ROWS[nr], ci) + span:
+                        self.kc = ci
+                        break
+        self.kb_refresh()
+
+    def set_focus(self, focus):
+        self.focus = focus
+        self.kb_refresh()
+
+    def toggle_focus(self):
+        self.set_focus('list' if self.focus == 'keys' and self.entries else 'keys')
+
+    def key_up(self):
+        self.kb_move(-1, 0) if self.focus == 'keys' else self['list'].up()
+
+    def key_down(self):
+        self.kb_move(1, 0) if self.focus == 'keys' else self['list'].down()
+
+    def key_left(self):
+        self.kb_move(0, -1) if self.focus == 'keys' else self.set_focus('keys')
+
+    def key_right(self):
+        self.kb_move(0, 1) if self.focus == 'keys' else self.complete()
+
+    def key_ok(self):
+        if self.focus == 'list':
+            self.ok()
+            return
+        value = KB_ROWS[self.kr][self.kc][2]
+        if value == 'BS':
+            self.backspace()
+        elif value == 'GO':
+            self.search_text()
+        else:
+            self.text += value
+            self.last_digit = None
+            self.changed()
 
     # ------------------------------------------------------------ lista
     def rebuild(self, keep=False):
@@ -1123,13 +1219,16 @@ class SearchScreen(Screen):
         else:
             items = [{'name': q, 'sub': u'Ostatnio szukane', 'q': q, 'right': u''}
                      for q in (config.get('searches') or [])]
-        self.items = items
-        self['list'].l.setList([make_entry(i, S(1150)) for i in items])
+        self.entries = items
+        if not items and self.focus == 'list':
+            self.focus = 'keys'
+            self.kb_refresh()
+        self['list'].l.setList([make_entry(i, S(950)) for i in items])
         self['list'].moveToIndex(max(0, min(index or 0, len(items) - 1)))
 
     def selected(self):
         idx = self['list'].getSelectionIndex()
-        return self.items[idx] if 0 <= idx < len(self.items) else None
+        return self.entries[idx] if 0 <= idx < len(self.entries) else None
 
     # ------------------------------------------------------------ wpisywanie
     def changed(self):
@@ -1142,7 +1241,7 @@ class SearchScreen(Screen):
             self.sugs = [s for s in self.sugs if t and s.lower().startswith(t.lower())]
         self.rebuild()
         self.sug_timer.stop()
-        if t and cached is None and config.get('suggest'):
+        if t and cached is None:
             self.sug_timer.start(250, True)
 
     def request_sugs(self):
@@ -1174,17 +1273,13 @@ class SearchScreen(Screen):
         self.last_digit = None
         self.changed()
 
-    def clear(self):
-        self.text = u''
-        self.last_digit = None
-        self.changed()
-
     def complete(self):
         item = self.selected()
         if item and self.text.strip():
             self.text = item['q'] + u' '
             self.last_digit = None
             self.changed()
+        self.set_focus('keys')
 
     def ascii(self):
         """Klawiatura USB / pilot z klawiatura: litery i znaki (cyfry obsluguje blok numeryczny)."""
@@ -1203,14 +1298,6 @@ class SearchScreen(Screen):
                 self.text += chr(code)
             self.last_digit = None
             self.changed()
-
-    def keyboard(self):
-        def done(text=None):
-            if text is not None:
-                self.text = text
-                self.last_digit = None
-                self.changed()
-        self.session.openWithCallback(done, VirtualKeyBoard, title=u'Szukaj w YouTube', text=self.text)
 
     # ------------------------------------------------------------ szukanie
     def ok(self):
@@ -1234,32 +1321,7 @@ def run_search(session, query):
 
 
 def open_search(session):
-    if config.get('suggest'):
-        session.open(SearchScreen)
-    else:
-        open_search_classic(session)
-
-
-def open_search_classic(session):
-    def keyboard():
-        def done(text=None):
-            if text:
-                run_search(session, text)
-        session.openWithCallback(done, VirtualKeyBoard, title=u'Szukaj w YouTube', text='')
-
-    recent = list(config.get('searches') or [])
-    if not recent:
-        keyboard()
-        return
-
-    def ok(screen, item):
-        if item['kind'] == 'newsearch':
-            keyboard()
-        else:
-            run_search(session, item['q'])
-    items = [{'name': u'Nowe wyszukiwanie…', 'sub': u'Wpisz frazę na klawiaturze', 'kind': 'newsearch'}]
-    items += [{'name': q, 'sub': u'Ostatnio szukane', 'kind': 'recent', 'q': q} for q in recent]
-    session.open(HubList, u'Szukaj', u'Wybierz lub wpisz nową frazę', items=items, on_ok=ok)
+    session.open(SearchScreen)
 
 
 def home_ok(screen, item):
@@ -1330,8 +1392,6 @@ def settings_items():
          'sub': u'OK: zainstaluj lub zaktualizuj (opkg install python3-yt-dlp)', 'kind': 'set_ytdlp'},
         {'name': u'Pytaj o yt-dlp przy starcie: ' + (u'TAK' if config.get('ytdlp_prompt') else u'NIE'),
          'sub': u'Gdy yt-dlp nie jest zainstalowany', 'kind': 'set_ytdlp_prompt'},
-        {'name': u'Podpowiedzi przy wpisywaniu: ' + (u'TAK' if config.get('suggest') else u'NIE'),
-         'sub': u'Pole wyszukiwania z podpowiedziami YouTube (NIE = zwykła klawiatura)', 'kind': 'set_suggest'},
         {'name': u'Autoodtwarzanie następnego: ' + (u'TAK' if config.get('autoplay') else u'NIE'),
          'sub': u'Kolejny film z listy, playlisty lub kanału', 'kind': 'set_autoplay'},
         {'name': u'Pomijanie sponsorów: ' + (u'TAK' if config.get('sponsorblock') else u'NIE'),
@@ -1373,8 +1433,6 @@ def open_settings(session, home_screen):
                 % (u'pojawi się' if config.get('main_menu') else u'zniknie'),
                 MessageBox.TYPE_YESNO)
             return
-        elif kind == 'set_suggest':
-            config.put('suggest', not config.get('suggest'))
         elif kind == 'set_ytdlp':
             check_ytdlp(session, manual=True)
             return
