@@ -1,5 +1,10 @@
 # Historia zmian
 
+## [2.4.1]
+- Naprawiono awarię GUI po aktualizacji pluginu (`Modal open are allowed only from a screen which is modal`):
+  restart interfejsu jest teraz zlecany z timera, a komunikaty informacyjne nie zostawiają okien z timeoutem pod innymi.
+- Wyciszono nieszkodliwy błąd `BrokenPipeError` w logu Enigmy przy zamykaniu odtwarzania HLS.
+
 ## [2.4.0]
 - Wymagany Python 3: instalator (`install.sh`) odmawia instalacji na obrazach z Pythonem 2, pakiet IPK ma
   zależność `python3-core`, a sama wtyczka na Pythonie 2 pokazuje tylko komunikat (nie ładuje kodu aplikacji).

@@ -400,8 +400,7 @@ class HubList(Screen):
         self.refresh()
 
     def flash(self, msg, error=False):
-        self.session.open(MessageBox, msg,
-                          MessageBox.TYPE_ERROR if error else MessageBox.TYPE_INFO, timeout=3)
+        popup(self.session, msg, MessageBox.TYPE_ERROR if error else MessageBox.TYPE_INFO, 3)
 
     def exit(self):
         self.alive = False
@@ -499,12 +498,12 @@ def open_login(session, after=None, login_mode='own'):
         if not auth.has_credentials():
             config.import_credentials()
         if not auth.has_credentials():
-            session.open(MessageBox, auth.NOT_CONFIGURED, MessageBox.TYPE_ERROR, timeout=8)
+            popup(session, auth.NOT_CONFIGURED, MessageBox.TYPE_ERROR, 8)
             return
 
     def done(ok=False):
         if ok:
-            session.open(MessageBox, u'Zalogowano pomyślnie ✔', MessageBox.TYPE_INFO, timeout=3)
+            popup(session, u'Zalogowano pomyślnie ✔', MessageBox.TYPE_INFO, 3)
         if after:
             after()
     session.openWithCallback(done, LoginScreen, login_mode)
@@ -1428,7 +1427,7 @@ def open_settings(session, home_screen):
             config.put('main_menu', not config.get('main_menu'))
             screen.set_items(settings_items(), keep=True)
             session.openWithCallback(
-                lambda yes: session.open(TryQuitMainloop, 3) if yes else None, MessageBox,
+                lambda yes: restart_gui(session) if yes else None, MessageBox,
                 u'Skrót w menu głównym %s po restarcie interfejsu.\nZrestartować GUI teraz?'
                 % (u'pojawi się' if config.get('main_menu') else u'zniknie'),
                 MessageBox.TYPE_YESNO)
@@ -1450,7 +1449,7 @@ def open_settings(session, home_screen):
                 if update.rollback():
                     ask_restart(session, u'Przywrócono poprzednią wersję.')
                 else:
-                    session.open(MessageBox, u'Brak kopii zapasowej.', MessageBox.TYPE_ERROR, timeout=5)
+                    popup(session, u'Brak kopii zapasowej.', MessageBox.TYPE_ERROR, 5)
             session.openWithCallback(do_rollback, MessageBox,
                                      u'Przywrócić wersję sprzed ostatniej aktualizacji?', MessageBox.TYPE_YESNO)
             return
@@ -1483,9 +1482,39 @@ def open_settings(session, home_screen):
 
 
 # ================================================================== aktualizacje
+_restart_timers = []
+
+
+def restart_gui(session):
+    """Restart interfejsu zlecony z timera, a nie bezposrednio z callbacku okna.
+
+    Enigma pozwala otworzyc kolejne okno modalne tylko z ekranu, ktory aktualnie dziala; w callbacku
+    zamykanego MessageBox (zwlaszcza gdy pod spodem czekalo inne okno) bywa to niemozliwe
+    ("Modal open are allowed only from a screen which is modal"). Timer odpala sie juz po uporzadkowaniu stosu okien."""
+    holder = []
+    timer = eTimer()
+    entry = (timer, holder)
+
+    def fire():
+        if entry in _restart_timers:
+            _restart_timers.remove(entry)
+        try:
+            session.open(TryQuitMainloop, 3)
+        except Exception as e:  # ostatnia deska ratunku: bezposredni restart GUI
+            ytlog.log('[YTDark] TryQuitMainloop:', e)
+            try:
+                from enigma import quitMainloop
+                quitMainloop(3)
+            except Exception as e2:
+                ytlog.log('[YTDark] quitMainloop:', e2)
+    connect_timer(timer, fire, holder)
+    _restart_timers.append(entry)
+    timer.start(400, True)
+
+
 def ask_restart(session, prefix):
     session.openWithCallback(
-        lambda yes: session.open(TryQuitMainloop, 3) if yes else None, MessageBox,
+        lambda yes: restart_gui(session) if yes else None, MessageBox,
         prefix + u'\nZrestartować interfejs teraz? (bez tego działa jeszcze stara wersja)',
         MessageBox.TYPE_YESNO)
 
@@ -1500,15 +1529,14 @@ def check_updates(session, manual=False, after=None):
             offer_update(session, info, after)
             return
         if manual:
-            session.open(MessageBox, u'Masz najnowszą wersję (%s).' % __version__,
-                         MessageBox.TYPE_INFO, timeout=5)
+            popup(session, u'Masz najnowszą wersję (%s).' % __version__, MessageBox.TYPE_INFO, 5)
         elif after:
             after()
 
     def fail(err):
         ytlog.log('[YTDark] sprawdzanie aktualizacji:', err)
         if manual:
-            session.open(MessageBox, err_text(err), MessageBox.TYPE_ERROR, timeout=8)
+            popup(session, err_text(err), MessageBox.TYPE_ERROR, 8)
         elif after:
             after()
 
@@ -1532,15 +1560,14 @@ def offer_update(session, info, after=None):
 
 
 def install_update(session, info):
-    session.open(MessageBox, u'Pobieram i instaluję aktualizację…', MessageBox.TYPE_INFO, timeout=3)
+    popup(session, u'Pobieram i instaluję aktualizację…', MessageBox.TYPE_INFO, 4)
 
     def got(version):
         ask_restart(session, u'Zainstalowano wersję %s.' % version)
 
     def fail(err):
         ytlog.log('[YTDark] aktualizacja:', err)
-        session.open(MessageBox, u'Aktualizacja nie powiodła się:\n' + err_text(err),
-                     MessageBox.TYPE_ERROR, timeout=10)
+        popup(session, u'Aktualizacja nie powiodła się:\n' + err_text(err), MessageBox.TYPE_ERROR, 10)
 
     d = threads.deferToThread(update.install, info)
     d.addCallback(got)
@@ -1557,7 +1584,7 @@ def popup(session, text, kind=None, timeout=10):
             return
         except Exception as e:
             ytlog.log('[YTDark] AddPopup:', e)
-    session.open(MessageBox, text, kind, timeout=timeout)
+    session.open(MessageBox, text, kind)  # bez timeoutu: nie zostawiamy "wiszacych" okien pod innymi
 
 
 def ytdlp_install(session):
@@ -1585,8 +1612,8 @@ def check_ytdlp(session, manual=False):
     """Brak yt-dlp -> pyta, czy zainstalowac (opkg install python3-yt-dlp). Jest -> (reczne) proponuje aktualizacje."""
     if not ytdlp_setup.supported():
         if manual:
-            session.open(MessageBox, u'Ten obraz nie obsługuje instalacji yt-dlp przez opkg\n'
-                                     u'(wymagany Python 3 i opkg).', MessageBox.TYPE_INFO, timeout=8)
+            popup(session, u'Ten obraz nie obsługuje instalacji yt-dlp przez opkg\n'
+                           u'(wymagany Python 3 i opkg).', MessageBox.TYPE_INFO, 8)
         return
     if ytdlp_setup.installed():
         if not manual:
