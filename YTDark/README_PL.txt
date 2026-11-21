@@ -1,3 +1,6 @@
+WYMAGANIA: obraz Enigma2 z Pythonem 3 (np. OpenATV 7.x lub nowszy). Na Pythonie 2 instalator
+  odmawia instalacji, a wtyczka pokazuje tylko komunikat.
+
 YTDark - YouTube bez reklam dla Enigma2
 =======================================
 

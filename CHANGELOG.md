@@ -1,5 +1,10 @@
 # Historia zmian
 
+## [2.4.0]
+- Wymagany Python 3: instalator (`install.sh`) odmawia instalacji na obrazach z Pythonem 2, pakiet IPK ma
+  zależność `python3-core`, a sama wtyczka na Pythonie 2 pokazuje tylko komunikat (nie ładuje kodu aplikacji).
+- Kod aplikacji przeniesiony z `plugin.py` do `app.py`; `plugin.py` jest teraz cienkim punktem wejścia.
+
 ## [2.3.1]
 - Naprawiono błąd: wyjście z ekranu wyszukiwania (Wstecz) wywalało Enigmę (`'list' object is not callable`).
 

@@ -9,6 +9,11 @@ Wtyczka **YouTube bez reklam** dla dekoderów z **Enigma2** (OpenATV, OpenPLi i 
 - Opcjonalne logowanie kodem (subskrypcje, playlisty, polubione)
 - Aktualizacje z GitHub prosto z pluginu (za Twoją zgodą)
 
+## Wymagania
+
+Obraz Enigma2 z **Pythonem 3** (np. OpenATV 7.x lub nowszy). Instalator i pakiet IPK odmawiają instalacji
+na obrazach z Pythonem 2.
+
 ## Instalacja
 
 **1. Pakiet IPK** (najprościej): pobierz `enigma2-plugin-extensions-ytdark_*_all.ipk` z zakładki

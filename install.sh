@@ -14,6 +14,22 @@ fetch() {  # fetch URL PLIK - najpierw z weryfikacja certyfikatu, potem awaryjni
     return 1
 }
 
+# YTDark wymaga Pythona 3 - na obrazach z Pythonem 2 nie instalujemy
+ENIGMA_BIN="${ENIGMA_BIN:-/usr/bin/enigma2}"
+enigma_python() {
+    V=$(grep -a -m1 -o 'libpython[0-9][0-9.]*' "$ENIGMA_BIN" 2>/dev/null | head -1 | sed 's/^libpython//; s/\.*$//')
+    if [ -n "$V" ]; then echo "$V"; return; fi
+    if ls /usr/lib/libpython3* >/dev/null 2>&1; then echo 3; return; fi
+    if ls /usr/lib/libpython2* >/dev/null 2>&1; then echo 2; return; fi
+    echo ""
+}
+PYV=$(enigma_python)
+case "$PYV" in
+    3*) echo "Wykryto Python $PYV - OK." ;;
+    2*) echo "Ten obraz uzywa Pythona $PYV. YTDark wymaga Pythona 3 - instalacja przerwana."; exit 1 ;;
+    *)  echo "Uwaga: nie udalo sie ustalic wersji Pythona w tym obrazie - kontynuuje." ;;
+esac
+
 rm -rf "$TMP"; mkdir -p "$TMP" || exit 1
 echo "Pobieram YTDark..."
 fetch "$BASE/YTDark.zip" "$TMP/YTDark.zip" || { echo "Blad pobierania."; exit 1; }
