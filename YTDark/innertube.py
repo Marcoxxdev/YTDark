@@ -335,6 +335,10 @@ def _walk(node, out, tokens):
             if tok:
                 tokens.append(tok)
             continue
+        elif key in ('nextContinuationData', 'nextRadioContinuationData') and isinstance(val, dict):
+            if val.get('continuation'):  # starszy zapis kolejnych stron: playlisty i kolejki odtwarzania
+                tokens.append(val['continuation'])
+            continue
         elif isinstance(val, (dict, list)):
             _walk(val, out, tokens)
             continue
@@ -365,8 +369,26 @@ def _list(endpoint, body, tv=False):
     except Exception as e:
         ytlog.log('[YTDark] blad parsera:', e)
         raise YTError(u'Nie udało się odczytać odpowiedzi YouTube (zmienił się format).')
+    ytlog.log('[YTDark] lista %s: %d pozycji, kolejna strona: %s' % (endpoint, len(items), 'tak' if token else 'nie'))
     if items and token:
         items.append(_more_item(lambda: _list(endpoint, {'continuation': token}, tv)))
+    return items
+
+
+def _follow(items, pages=4):
+    """Doczytuje kolejne strony od razu (np. playlista 18 filmow oddana w dwoch partiach po 9),
+    zeby uzytkownik nie musial szukac pozycji 'Wczytaj wiecej'. Przy bledzie zostawia to, co jest."""
+    while pages > 0 and items and items[-1].get('kind') == 'more':
+        more = items.pop()
+        try:
+            nxt = more['more']()
+        except YTError as e:
+            ytlog.log('[YTDark] doczytywanie strony: %s' % (e,))
+            items.append(more)
+            break
+        seen = set((i['kind'], i['id']) for i in items if i.get('kind') != 'more')
+        items += [i for i in nxt if i.get('kind') == 'more' or (i['kind'], i['id']) not in seen]
+        pages -= 1
     return items
 
 
@@ -402,20 +424,23 @@ def _playlist_via_next(playlist_id):
     return _list('next', body)
 
 
-def playlist_items(playlist_id):
+def playlist_items(playlist_id, expand=True):
+    """expand=True: doczytuje do kilku stron (dla playlist); kanaly maja setki filmow - tam zostaje 'Wczytaj wiecej'."""
+    def done(items):
+        return _follow(items) if expand else items
     if playlist_id.startswith('RD'):  # Mix: strona playlisty nie istnieje (zwraca blad 400)
-        return _playlist_via_next(playlist_id)
+        return done(_playlist_via_next(playlist_id))
     error = None
     try:
         items = _list('browse', {'browseId': 'VL' + playlist_id})
         if items:
-            return items
+            return done(items)
     except YTError as e:
         error = e
     try:  # zapas: ta sama playlista jako kolejka odtwarzania
         items = _playlist_via_next(playlist_id)
         if items:
-            return items
+            return done(items)
     except YTError as e:
         error = error or e
     if error:
@@ -426,7 +451,7 @@ def playlist_items(playlist_id):
 def channel_videos(channel_id):
     # playlista "przeslane" kanalu ma id kanalu z UC -> UU
     if channel_id.startswith('UC'):
-        return playlist_items('UU' + channel_id[2:])
+        return playlist_items('UU' + channel_id[2:], expand=False)
     return _list('browse', {'browseId': channel_id, 'params': 'EgZ2aWRlb3PyBgQKAjoA'})
 
 

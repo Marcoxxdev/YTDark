@@ -1,5 +1,10 @@
 # Historia zmian
 
+## [2.5.2]
+- Playlisty i Mixy doczytują kolejne strony automatycznie (do 4 stron), więc lista od razu pokazuje wszystkie filmy,
+  a nie tylko pierwszą partię z pozycją „Wczytaj więcej”. Obsługa tokenów kolejnych stron także w starszym zapisie YouTube.
+- W logu `/tmp/ytdark.log` widać, ile pozycji zwrócił YouTube i czy jest kolejna strona.
+
 ## [2.5.1]
 - Naprawiono otwieranie playlist z wyszukiwania: Mixy („Mix – …”) i listy bez zwykłej strony otwierają się teraz
   jako kolejka odtwarzania (wcześniej błąd „kod 400”); gdy strona playlisty zawiedzie, używany jest ten sam zapas.
