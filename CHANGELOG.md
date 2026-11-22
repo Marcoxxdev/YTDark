@@ -1,5 +1,10 @@
 # Historia zmian
 
+## [2.5.1]
+- Naprawiono otwieranie playlist z wyszukiwania: Mixy („Mix – …”) i listy bez zwykłej strony otwierają się teraz
+  jako kolejka odtwarzania (wcześniej błąd „kod 400”); gdy strona playlisty zawiedzie, używany jest ten sam zapas.
+- Nieudane zapytania do YouTube są zapisywane w `/tmp/ytdark.log` wraz z odpowiedzią serwera.
+
 ## [2.5.0]
 - Szybsze otwieranie filmów: zaznaczony na ponad ~2 s film jest przygotowywany w tle (Ustawienia →
   „Wczytywanie z wyprzedzeniem”), więc OK działa od razu; wynik trafia do pamięci podręcznej (20 min),

@@ -51,7 +51,8 @@ SKIP_KEYS = set([
     'compactPromotedVideoRenderer', 'displayAdRenderer', 'bannerPromoRenderer',
     'reelShelfRenderer', 'reelItemRenderer', 'shortsLockupViewModel',
 ])
-VIDEO_KEYS = ('videoRenderer', 'gridVideoRenderer', 'compactVideoRenderer', 'playlistVideoRenderer')
+VIDEO_KEYS = ('videoRenderer', 'gridVideoRenderer', 'compactVideoRenderer', 'playlistVideoRenderer',
+              'playlistPanelVideoRenderer')
 CHANNEL_KEYS = ('channelRenderer', 'gridChannelRenderer')
 PLAYLIST_KEYS = ('playlistRenderer', 'gridPlaylistRenderer')
 
@@ -80,6 +81,9 @@ def _post(endpoint, body, tv=False):
         headers.update({'X-YouTube-Client-Name': '1', 'X-YouTube-Client-Version': WEB_VERSION})
         url = BASE + endpoint + '?prettyPrint=false&key=' + WEB_KEY
     status, data = net.post_json(url, body, headers=headers, as_json=True)
+    if status != 200:
+        ytlog.log('[YTDark] youtubei %s -> %s: %s | %s' % (endpoint, status, str(data)[:300],
+                                                       dict((k, v) for k, v in body.items() if k != 'context')))
     if status == 401 and tv:
         raise YTError(u'Sesja wygasła. Zaloguj się ponownie (Ustawienia).')
     if status != 200 or not isinstance(data, dict) or not data:
@@ -389,8 +393,34 @@ def trending():
     return home()
 
 
+def _playlist_via_next(playlist_id):
+    """Playlisty bez zwyklej strony (Mix 'RD...', czesc list automatycznych) otwiera sie jak kolejke odtwarzania."""
+    body = {'playlistId': playlist_id}
+    if (playlist_id.startswith('RD') and len(playlist_id) == 13
+            and playlist_id[2:4] not in ('MM', 'EM', 'QM', 'CL', 'GM', 'AM')):  # 'RD' + id filmu, z ktorego startuje Mix
+        body['videoId'] = playlist_id[2:]
+    return _list('next', body)
+
+
 def playlist_items(playlist_id):
-    return _list('browse', {'browseId': 'VL' + playlist_id})
+    if playlist_id.startswith('RD'):  # Mix: strona playlisty nie istnieje (zwraca blad 400)
+        return _playlist_via_next(playlist_id)
+    error = None
+    try:
+        items = _list('browse', {'browseId': 'VL' + playlist_id})
+        if items:
+            return items
+    except YTError as e:
+        error = e
+    try:  # zapas: ta sama playlista jako kolejka odtwarzania
+        items = _playlist_via_next(playlist_id)
+        if items:
+            return items
+    except YTError as e:
+        error = error or e
+    if error:
+        raise error
+    return []
 
 
 def channel_videos(channel_id):
