@@ -1,5 +1,11 @@
 # Historia zmian
 
+## [2.5.3]
+- Playlisty i Mixy: najpierw zwykłe zapytanie (pełna lista, działa też przy koncie zalogowanym kodem TV), klient TV tylko
+  jako zapas dla prywatnych list. Naprawia błąd 400 przy Mixach oraz „9 zamiast 18 filmów” przy zalogowanym koncie.
+- Usunięto „szybką” ekstrakcję yt-dlp z wersji 2.5.0: zawsze kończyła się błędem i wydłużała start filmu o ok. 8 s.
+- Filmy z ograniczeniem wiekowym pokazują właściwy komunikat zamiast fałszywego „blokady bota”.
+
 ## [2.5.2]
 - Playlisty i Mixy doczytują kolejne strony automatycznie (do 4 stron), więc lista od razu pokazuje wszystkie filmy,
   a nie tylko pierwszą partię z pozycją „Wczytaj więcej”. Obsługa tokenów kolejnych stron także w starszym zapisie YouTube.

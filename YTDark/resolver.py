@@ -30,11 +30,6 @@ def _label(height, kind):
     return (u'%dp' % height if height else u'auto') + (u' (HLS)' if kind == 'hls' else u'')
 
 
-# Szybka ekstrakcja: tylko klient web_safari (HLS, bez pobierania i liczenia skryptu odtwarzacza JS)
-# i bez manifestow DASH. Gdy nic nie zwroci, probujemy jeszcze domyslnych ustawien yt-dlp.
-YTDLP_FAST = {'youtube': {'player_client': ['web_safari'], 'skip': ['dash', 'translated_subs']}}
-
-
 def _streams_from_info(info, video_id):
     out, seen = [], set()
     for f in info.get('formats', []):
@@ -70,6 +65,9 @@ def _streams_from_info(info, video_id):
     return out
 
 
+_ytdlp_error = [u'']   # tekst ostatniego bledu yt-dlp (do rozpoznania ograniczenia wiekowego)
+
+
 def via_ytdlp(video_id):
     mod = None
     for name in ('yt_dlp', 'youtube_dl'):
@@ -80,22 +78,19 @@ def via_ytdlp(video_id):
             continue
     if mod is None:
         return None
-    for label, extra in ((u'szybki', {'extractor_args': YTDLP_FAST}), (u'domyślny', {})):
-        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True,
-                'noplaylist': True, 'socket_timeout': 15}
-        opts.update(extra)
-        t0 = time.time()
-        try:
-            with mod.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(WATCH + video_id, download=False)
-            out = _streams_from_info(info, video_id)
-        except Exception as e:
-            ytlog.log('[YTDark] yt-dlp (%s) blad: %s' % (label, e))
-            continue
-        ytlog.log('[YTDark] yt-dlp (%s): %.1f s, %d strumieni z dzwiekiem' % (label, time.time() - t0, len(out)))
-        if out:
-            return out
-    return None
+    _ytdlp_error[0] = u''
+    opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'noplaylist': True, 'socket_timeout': 15}
+    t0 = time.time()
+    try:
+        with mod.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(WATCH + video_id, download=False)
+        out = _streams_from_info(info, video_id)
+    except Exception as e:
+        _ytdlp_error[0] = u'%s' % (e,)
+        ytlog.log('[YTDark] yt-dlp blad: %s' % (e,))
+        return None
+    ytlog.log('[YTDark] yt-dlp: %.1f s, %d strumieni z dzwiekiem' % (time.time() - t0, len(out)))
+    return out or None
 
 
 # Klienci youtubei po kolei: YouTube sprawdza "czy to bot" osobno dla kazdego klienta,
@@ -148,6 +143,23 @@ def _try_client(video_id, c):
         out.append({'name': u'auto (HLS)', 'url': sd['hlsManifestUrl'], 'height': 0, 'kind': 'hls',
                     'ua': c['ua']})
     return out or None
+
+
+AGE_MARKERS = ('confirm your age', 'swój wiek', 'wiekow', 'inappropriate for some', 'nieodpowiedni dla niektórych',
+               'age-restricted')
+
+
+def is_age_restricted(text):
+    low = (text or u'').lower()
+    return any(m in low for m in AGE_MARKERS)
+
+
+def age_help():
+    if auth.is_logged_in():
+        return (u'Ten film ma ograniczenie wiekowe, a YouTube nie pozwala go odtworzyć na tym koncie.\n'
+                u'Konto musi mieć potwierdzony wiek w YouTube.')
+    return (u'Ten film ma ograniczenie wiekowe i wymaga zalogowanego konta.\n'
+            u'Zaloguj się w Ustawieniach (kodem) - konto musi mieć potwierdzony wiek w YouTube.')
 
 
 BOT_HELP = (u'YouTube blokuje to połączenie jako „bota” - to blokada adresu IP, nie błąd pluginu.\n'
@@ -228,6 +240,8 @@ def via_innertube(video_id):
         reasons.append(u'brak strumieni')
     text = u' | '.join(reasons)
     low = text.lower()
+    if is_age_restricted(text):
+        raise YTError(age_help())
     if 'bot' in low or 'sign in' in low or 'zaloguj' in low:
         raise YTError(BOT_HELP)
     raise YTError(u'YouTube nie udostępnia tego filmu: %s' % (reasons[0] if reasons else u'?'))
@@ -267,6 +281,8 @@ def _resolve_uncached(video_id):
             streams.sort(key=lambda s: (-s['height'], s['kind']))
             ytlog.log('[YTDark] strumienie: %s' % ', '.join(s['name'] for s in streams))
             return streams
+    if is_age_restricted(_ytdlp_error[0]):  # yt-dlp rozpoznal ograniczenie wiekowe, wlasne klienty nie
+        raise YTError(age_help())
     if last_error:
         raise last_error
     raise YTError(u'Nie udało się pobrać adresu strumienia (YouTube zmienił zabezpieczenia).\n'
