@@ -5,6 +5,7 @@ i pomijanie sponsorow w filmach (SponsorBlock)."""
 from __future__ import print_function
 
 import os
+import threading
 
 import time
 
@@ -160,6 +161,10 @@ class HubList(Screen):
         self.pic_holder = []
         self.thumb_timer = eTimer()
         connect_timer(self.thumb_timer, self.load_thumb, self.pic_holder)
+        self.pf_holder = []
+        self.pf_timer = eTimer()
+        connect_timer(self.pf_timer, self.prefetch_current, self.pf_holder)
+        self.onClose.append(self.pf_timer.stop)
         self.picload = ePicLoad()
         try:
             self.picload.PictureData.get().append(self.pic_ready)
@@ -289,6 +294,27 @@ class HubList(Screen):
             lines.append(u'Sortowanie: ' + SORT_LABELS[self.sort])
         self['stat'].setText(u'\n'.join(lines))
         self.thumb_for_current()
+        self.schedule_prefetch()
+
+    # ------------------------------------------------------------ przygotowanie filmu w tle
+    def schedule_prefetch(self):
+        self.pf_timer.stop()
+        item = self.current()
+        if (config.get('prefetch') and item and item.get('kind') == 'video' and item.get('id')
+                and not item.get('live')):
+            self.pf_timer.start(PREFETCH_DWELL_MS, True)
+
+    def prefetch_current(self):
+        """Zaznaczony dluzej film: pobieramy jego strumien w tle, zeby OK dzialalo od razu."""
+        item = self.current()
+        if (not self.alive or not item or item.get('kind') != 'video' or _prefetch_busy[0]
+                or resolver.is_cached(item['id'])):
+            return
+        _prefetch_busy[0] = True
+
+        def done(_result):
+            _prefetch_busy[0] = False  # bledy ignorujemy - przy OK pobierzemy normalnie
+        threads.deferToThread(load_bundle, item).addBoth(done)
 
     # ------------------------------------------------------------ miniatury
     def item_thumb(self, item):
@@ -510,6 +536,28 @@ def open_login(session, after=None, login_mode='own'):
 
 
 # ================================================================== odtwarzacz
+PREFETCH_DWELL_MS = 1800   # tyle zaznaczony film musi "poczekac", zanim przygotujemy go w tle
+_prefetch_busy = [False]
+
+
+def load_bundle(item):
+    """Strumienie filmu + segmenty SponsorBlock pobierane rownolegle (wyniki trafiaja do pamieci podrecznej)."""
+    box = {'segs': []}
+
+    def sb():
+        try:
+            if config.get('sponsorblock') and not item.get('live'):
+                box['segs'] = sponsorblock.segments(item['id'])
+        except Exception as e:
+            ytlog.log('[YTDark] sponsorblock:', e)
+    t = threading.Thread(target=sb)
+    t.daemon = True
+    t.start()
+    streams = resolver.resolve(item['id'])
+    t.join(8)
+    return streams, box['segs']
+
+
 def exteplayer3_available():
     return any(os.path.exists(x) for x in ('/usr/bin/exteplayer3',
                                            '/usr/lib/enigma2/python/Plugins/SystemPlugins/ServiceApp'))
@@ -850,11 +898,7 @@ class YTPlayer(Screen):
         self.msg(u'Wczytuję: %s' % item['name'])
 
         def work():
-            streams = resolver.resolve(item['id'])
-            segs = []
-            if config.get('sponsorblock') and not item.get('live'):
-                segs = sponsorblock.segments(item['id'])
-            return streams, segs
+            return load_bundle(item)
 
         def got(result):
             self.loading_next = False
@@ -971,11 +1015,7 @@ def play_video(screen, item):
     screen['sel'].setText(u'Pobieranie strumienia…')
 
     def work():
-        streams = resolver.resolve(item['id'])
-        segs = []
-        if config.get('sponsorblock') and not item.get('live'):
-            segs = sponsorblock.segments(item['id'])
-        return streams, segs
+        return load_bundle(item)
 
     def got(result):
         streams, segs = result
@@ -1391,6 +1431,8 @@ def settings_items():
          'sub': u'OK: zainstaluj lub zaktualizuj (opkg install python3-yt-dlp)', 'kind': 'set_ytdlp'},
         {'name': u'Pytaj o yt-dlp przy starcie: ' + (u'TAK' if config.get('ytdlp_prompt') else u'NIE'),
          'sub': u'Gdy yt-dlp nie jest zainstalowany', 'kind': 'set_ytdlp_prompt'},
+        {'name': u'Wczytywanie z wyprzedzeniem: ' + (u'TAK' if config.get('prefetch') else u'NIE'),
+         'sub': u'Przygotowuje zaznaczony film w tle, żeby OK działało od razu', 'kind': 'set_prefetch'},
         {'name': u'Autoodtwarzanie następnego: ' + (u'TAK' if config.get('autoplay') else u'NIE'),
          'sub': u'Kolejny film z listy, playlisty lub kanału', 'kind': 'set_autoplay'},
         {'name': u'Pomijanie sponsorów: ' + (u'TAK' if config.get('sponsorblock') else u'NIE'),
@@ -1432,6 +1474,8 @@ def open_settings(session, home_screen):
                 % (u'pojawi się' if config.get('main_menu') else u'zniknie'),
                 MessageBox.TYPE_YESNO)
             return
+        elif kind == 'set_prefetch':
+            config.put('prefetch', not config.get('prefetch'))
         elif kind == 'set_ytdlp':
             check_ytdlp(session, manual=True)
             return

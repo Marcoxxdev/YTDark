@@ -58,6 +58,6 @@ def put(name, text):
         if name not in _files:
             _order.append(name)
         _files[name] = text
-        while len(_order) > 60:
+        while len(_order) > 200:
             _files.pop(_order.pop(0), None)
         return 'http://127.0.0.1:%d/%s' % (_srv.server_address[1], name)

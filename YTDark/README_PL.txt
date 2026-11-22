@@ -61,6 +61,10 @@ YT-DLP: przy starcie plugin sprawdza, czy jest zainstalowany python3-yt-dlp. Gdy
 SKROT W MENU GLOWNYM: Ustawienia -> "Pokaz w menu glownym" (po restarcie GUI
   w menu glownym dekodera pojawi sie pozycja YTDark).
 
+SZYBKOSC: zaznaczony na ~2 s film jest przygotowywany w tle (Ustawienia -> Wczytywanie
+  z wyprzedzeniem), wiec OK dziala od razu. Gdy interfejs zacina sie podczas przegladania listy,
+  wylacz te opcje. Czasy pobierania (yt-dlp / playlista HLS) sa w /tmp/ytdark.log.
+
 DZIENNIK: plugin zapisuje wlasny log w /tmp/ytdark.log (np. przez FTP/telnet:
   cat /tmp/ytdark.log) - nie wymaga wlaczania logow debug.
 

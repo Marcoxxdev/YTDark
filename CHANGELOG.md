@@ -1,5 +1,14 @@
 # Historia zmian
 
+## [2.5.0]
+- Szybsze otwieranie filmów: zaznaczony na ponad ~2 s film jest przygotowywany w tle (Ustawienia →
+  „Wczytywanie z wyprzedzeniem”), więc OK działa od razu; wynik trafia do pamięci podręcznej (20 min),
+  a równoległe pobrania tego samego filmu są łączone w jedno.
+- Plugin zapamiętuje, która metoda pobierania (yt-dlp / własne klienty) działała ostatnio, i od niej zaczyna.
+- yt-dlp: szybka ekstrakcja (tylko klient web_safari, bez DASH) z automatycznym powrotem do ustawień domyślnych.
+- Segmenty SponsorBlock pobierane równolegle ze strumieniem i zapamiętywane.
+- Czasy poszczególnych etapów zapisywane w `/tmp/ytdark.log`.
+
 ## [2.4.1]
 - Naprawiono awarię GUI po aktualizacji pluginu (`Modal open are allowed only from a screen which is modal`):
   restart interfejsu jest teraz zlecany z timera, a komunikaty informacyjne nie zostawiają okien z timeoutem pod innymi.
