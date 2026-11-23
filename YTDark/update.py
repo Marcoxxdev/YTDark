@@ -107,7 +107,7 @@ def _extract(data, dest):
 
 
 def _verify_tree(folder, version):
-    for need in ('plugin.py', '__init__.py'):
+    for need in ('plugin.py', 'app.py', '__init__.py'):
         if not os.path.isfile(os.path.join(folder, need)):
             raise YTError(u'Archiwum jest niekompletne (brak %s).' % need)
     for base, _dirs, files in os.walk(folder):

@@ -8,13 +8,15 @@ Kolejnosc prob:
 from __future__ import print_function
 
 import re
+import threading
+import time
 
 try:
     from urllib.parse import urljoin
 except ImportError:  # python 2
     from urlparse import urljoin
 
-from . import auth, localsrv, net, ytlog
+from . import auth, config, localsrv, net, ytdlp_setup, ytlog
 from .net import YTError
 
 WATCH = 'https://www.youtube.com/watch?v='
@@ -28,24 +30,7 @@ def _label(height, kind):
     return (u'%dp' % height if height else u'auto') + (u' (HLS)' if kind == 'hls' else u'')
 
 
-def via_ytdlp(video_id):
-    mod = None
-    for name in ('yt_dlp', 'youtube_dl'):
-        try:
-            mod = __import__(name)
-            break
-        except Exception:
-            continue
-    if mod is None:
-        return None
-    opts = {'quiet': True, 'no_warnings': True, 'skip_download': True,
-            'noplaylist': True, 'socket_timeout': 15}
-    try:
-        with mod.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(WATCH + video_id, download=False)
-    except Exception as e:
-        ytlog.log('[YTDark] yt-dlp blad:', e)
-        return None
+def _streams_from_info(info, video_id):
     out, seen = [], set()
     for f in info.get('formats', []):
         url = f.get('url')
@@ -77,7 +62,34 @@ def via_ytdlp(video_id):
                     continue
                 seen.add(key)
                 out.append(st)
-    ytlog.log('[YTDark] yt-dlp: %d strumieni z dzwiekiem' % len(out))
+    return out
+
+
+_ytdlp_error = [u'']   # tekst ostatniego bledu yt-dlp (do rozpoznania ograniczenia wiekowego)
+
+
+def via_ytdlp(video_id):
+    mod = None
+    for name in ('yt_dlp', 'youtube_dl'):
+        try:
+            mod = __import__(name)
+            break
+        except Exception:
+            continue
+    if mod is None:
+        return None
+    _ytdlp_error[0] = u''
+    opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'noplaylist': True, 'socket_timeout': 15}
+    t0 = time.time()
+    try:
+        with mod.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(WATCH + video_id, download=False)
+        out = _streams_from_info(info, video_id)
+    except Exception as e:
+        _ytdlp_error[0] = u'%s' % (e,)
+        ytlog.log('[YTDark] yt-dlp blad: %s' % (e,))
+        return None
+    ytlog.log('[YTDark] yt-dlp: %.1f s, %d strumieni z dzwiekiem' % (time.time() - t0, len(out)))
     return out or None
 
 
@@ -131,6 +143,23 @@ def _try_client(video_id, c):
         out.append({'name': u'auto (HLS)', 'url': sd['hlsManifestUrl'], 'height': 0, 'kind': 'hls',
                     'ua': c['ua']})
     return out or None
+
+
+AGE_MARKERS = ('confirm your age', 'swój wiek', 'wiekow', 'inappropriate for some', 'nieodpowiedni dla niektórych',
+               'age-restricted')
+
+
+def is_age_restricted(text):
+    low = (text or u'').lower()
+    return any(m in low for m in AGE_MARKERS)
+
+
+def age_help():
+    if auth.is_logged_in():
+        return (u'Ten film ma ograniczenie wiekowe, a YouTube nie pozwala go odtworzyć na tym koncie.\n'
+                u'Konto musi mieć potwierdzony wiek w YouTube.')
+    return (u'Ten film ma ograniczenie wiekowe i wymaga zalogowanego konta.\n'
+            u'Zaloguj się w Ustawieniach (kodem) - konto musi mieć potwierdzony wiek w YouTube.')
 
 
 BOT_HELP = (u'YouTube blokuje to połączenie jako „bota” - to blokada adresu IP, nie błąd pluginu.\n'
@@ -211,28 +240,74 @@ def via_innertube(video_id):
         reasons.append(u'brak strumieni')
     text = u' | '.join(reasons)
     low = text.lower()
+    if is_age_restricted(text):
+        raise YTError(age_help())
     if 'bot' in low or 'sign in' in low or 'zaloguj' in low:
         raise YTError(BOT_HELP)
     raise YTError(u'YouTube nie udostępnia tego filmu: %s' % (reasons[0] if reasons else u'?'))
 
 
-def resolve(video_id):
-    """Zwraca liste strumieni posortowana od najwyzszej rozdzielczosci."""
+CACHE_TTL = 20 * 60   # adresy strumieni zyja godzinami; 20 min z zapasem
+CACHE_MAX = 12        # ile filmow trzymamy (lokalne playlisty HLS tez sa ograniczone w localsrv)
+_cache = {}
+_locks = {}
+
+
+def is_cached(video_id):
+    hit = _cache.get(video_id)
+    return bool(hit and time.time() - hit[0] < CACHE_TTL)
+
+
+def _resolve_uncached(video_id):
+    methods = {'ytdlp': via_ytdlp, 'innertube': via_innertube}
+    # zapamietujemy, ktora metoda dzialala ostatnio, i nia zaczynamy (nie tracimy czasu na odrzucane)
+    first = config.get('resolver_first')
+    if first not in methods:
+        first = 'ytdlp' if ytdlp_setup.installed() else 'innertube'
+    order = [first] + [m for m in ('ytdlp', 'innertube') if m != first]
     last_error = None
-    for fn in (via_ytdlp, via_innertube):
+    for name in order:
+        t0 = time.time()
         try:
-            streams = fn(video_id)
+            streams = methods[name](video_id)
         except YTError as e:
             last_error = e
+            ytlog.log('[YTDark] %s: %s (%.1f s)' % (name, e, time.time() - t0))
             continue
         if streams:
+            ytlog.log('[YTDark] resolve %s przez %s: %.1f s' % (video_id, name, time.time() - t0))
+            if config.get('resolver_first') != name:
+                config.put('resolver_first', name)
             streams.sort(key=lambda s: (-s['height'], s['kind']))
             ytlog.log('[YTDark] strumienie: %s' % ', '.join(s['name'] for s in streams))
             return streams
+    if is_age_restricted(_ytdlp_error[0]):  # yt-dlp rozpoznal ograniczenie wiekowe, wlasne klienty nie
+        raise YTError(age_help())
     if last_error:
         raise last_error
     raise YTError(u'Nie udało się pobrać adresu strumienia (YouTube zmienił zabezpieczenia).\n'
                   u'Zainstaluj yt-dlp na odbiorniku lub zaktualizuj plugin.')
+
+
+def resolve(video_id):
+    """Lista strumieni (od najwyzszej rozdzielczosci). Wynik trafia do pamieci podrecznej, a rownolegle
+    wywolania dla tego samego filmu (np. podglad w tle + klikniecie OK) czekaja na jedno wspolne pobieranie."""
+    def copies(streams):
+        return [dict(s) for s in streams]
+    hit = _cache.get(video_id)
+    if hit and time.time() - hit[0] < CACHE_TTL:
+        return copies(hit[1])
+    lock = _locks.setdefault(video_id, threading.Lock())
+    with lock:
+        hit = _cache.get(video_id)
+        if hit and time.time() - hit[0] < CACHE_TTL:
+            return copies(hit[1])
+        streams = _resolve_uncached(video_id)
+        _cache[video_id] = (time.time(), streams)
+        while len(_cache) > CACHE_MAX:
+            del _cache[min(_cache, key=lambda k: _cache[k][0])]
+    _locks.pop(video_id, None)
+    return copies(streams)
 
 
 def pick(streams, max_height):

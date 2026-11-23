@@ -165,3 +165,4 @@ def search(width):
                     ('key_yellow', '#d4a72c'), ('key_blue', '#2f6fbf')))
     L.append('</screen>')
     return '\n'.join(L)
+
