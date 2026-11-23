@@ -1,5 +1,10 @@
 # Historia zmian
 
+## [2.5.4]
+- Powiadomienia (np. „film dostępny tylko w wersji premium”, postęp instalacji, błędy) są rysowane od razu nad ekranem
+  pluginu i odtwarzaczem, a nie w systemowej kolejce, która pokazywała je dopiero po zamknięciu YTDark.
+  Kilka powiadomień wyświetla się po kolei, powtórki są pomijane, a czas wyświetlania zależy od długości tekstu.
+
 ## [2.5.3]
 - Playlisty i Mixy: najpierw zwykłe zapytanie (pełna lista, działa też przy koncie zalogowanym kodem TV), klient TV tylko
   jako zapas dla prywatnych list. Naprawia błąd 400 przy Mixach oraz „9 zamiast 18 filmów” przy zalogowanym koncie.

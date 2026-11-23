@@ -41,10 +41,6 @@ try:
     from enigma import getPrevAsciiCode
 except Exception:
     getPrevAsciiCode = None
-try:
-    from Tools.Notifications import AddPopup
-except Exception:
-    AddPopup = None
 from twisted.internet import threads
 
 try:
@@ -1619,16 +1615,81 @@ def install_update(session, info):
 
 
 # ================================================================== yt-dlp
-def popup(session, text, kind=None, timeout=10):
-    """Komunikat nad dowolnym oknem (takze nad odtwarzaczem), bez blokowania pracy."""
-    kind = MessageBox.TYPE_INFO if kind is None else kind
-    if AddPopup is not None:
-        try:
-            AddPopup(text, kind, timeout)
+TOAST_CHARS_PER_LINE = 58
+
+
+class ToastScreen(Screen):
+    """Powiadomienie rysowane nad biezacym ekranem (bez przejmowania pilota i bez stosu okien Enigmy)."""
+
+    def __init__(self, session, text, error=False):
+        Screen.__init__(self, session)
+        lines = 0
+        for part in text.split(u'\n'):
+            lines += max(1, -(-len(part) // TOAST_CHARS_PER_LINE))
+        self.skin = skins.toast(WIDTH, max(1, min(6, lines)), u'#e5382b' if error else u'#2f7de1')
+        self['text'] = Label(text)
+
+
+class ToastManager(object):
+    """Kolejka powiadomien: kazde pojawia sie od razu po akcji, kolejne dopiero po zniknieciu poprzedniego."""
+
+    def __init__(self):
+        self.queue = []
+        self.dialog = None
+        self.session = None
+        self.last = None
+        self.holder = []
+        self.timer = eTimer()
+        connect_timer(self.timer, self.expire, self.holder)
+
+    def show(self, session, text, error, timeout):
+        self.session = session
+        if text == self.last and (self.dialog is not None or (text, error) in [(q[0], q[1]) for q in self.queue]):
+            return  # to samo powiadomienie juz widac albo czeka - nie dublujemy
+        # czas wyswietlania: tyle, ile potrzeba na przeczytanie (min. podany timeout)
+        ms = int(max(float(timeout or 0), 2.5 + 0.045 * len(text)) * 1000)
+        self.queue.append((text, error, min(ms, 15000)))
+        self.last = text
+        if self.dialog is None:
+            self.next()
+
+    def next(self):
+        if self.dialog is not None or not self.queue:
             return
-        except Exception as e:
-            ytlog.log('[YTDark] AddPopup:', e)
-    session.open(MessageBox, text, kind)  # bez timeoutu: nie zostawiamy "wiszacych" okien pod innymi
+        text, error, ms = self.queue.pop(0)
+        try:
+            dlg = self.session.instantiateDialog(ToastScreen, text, error)
+            dlg.show()
+        except Exception as e:  # zapas: zwykle okno (bez timeoutu, zeby nie zalegalo pod innymi)
+            ytlog.log('[YTDark] toast:', e)
+            try:
+                self.session.open(MessageBox, text, MessageBox.TYPE_ERROR if error else MessageBox.TYPE_INFO)
+            except Exception as e2:
+                ytlog.log('[YTDark] MessageBox:', e2)
+            self.next()
+            return
+        self.dialog = dlg
+        self.timer.start(ms, True)
+
+    def expire(self):
+        dlg, self.dialog = self.dialog, None
+        if dlg is not None:
+            try:
+                self.session.deleteDialog(dlg)
+            except Exception as e:
+                ytlog.log('[YTDark] deleteDialog:', e)
+        if not self.queue:
+            self.last = None
+        self.next()
+
+
+_toasts = ToastManager()
+
+
+def popup(session, text, kind=None, timeout=6):
+    """Powiadomienie nad interfejsem w czasie rzeczywistym (takze nad listami i odtwarzaczem)."""
+    error = kind in (MessageBox.TYPE_ERROR, getattr(MessageBox, 'TYPE_WARNING', None))
+    _toasts.show(session, text, bool(error), timeout)
 
 
 def ytdlp_install(session):
