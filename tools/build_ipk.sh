@@ -22,7 +22,6 @@ cat > build/control/control <<EOT
 Package: enigma2-plugin-extensions-ytdark
 Version: $VER
 Architecture: all
-Depends: python3-core
 Maintainer: YTDark
 Section: extra
 Priority: optional

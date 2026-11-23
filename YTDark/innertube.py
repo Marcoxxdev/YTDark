@@ -51,8 +51,7 @@ SKIP_KEYS = set([
     'compactPromotedVideoRenderer', 'displayAdRenderer', 'bannerPromoRenderer',
     'reelShelfRenderer', 'reelItemRenderer', 'shortsLockupViewModel',
 ])
-VIDEO_KEYS = ('videoRenderer', 'gridVideoRenderer', 'compactVideoRenderer', 'playlistVideoRenderer',
-              'playlistPanelVideoRenderer')
+VIDEO_KEYS = ('videoRenderer', 'gridVideoRenderer', 'compactVideoRenderer', 'playlistVideoRenderer')
 CHANNEL_KEYS = ('channelRenderer', 'gridChannelRenderer')
 PLAYLIST_KEYS = ('playlistRenderer', 'gridPlaylistRenderer')
 
@@ -81,9 +80,6 @@ def _post(endpoint, body, tv=False):
         headers.update({'X-YouTube-Client-Name': '1', 'X-YouTube-Client-Version': WEB_VERSION})
         url = BASE + endpoint + '?prettyPrint=false&key=' + WEB_KEY
     status, data = net.post_json(url, body, headers=headers, as_json=True)
-    if status != 200:
-        ytlog.log('[YTDark] youtubei %s -> %s: %s | %s' % (endpoint, status, str(data)[:300],
-                                                       dict((k, v) for k, v in body.items() if k != 'context')))
     if status == 401 and tv:
         raise YTError(u'Sesja wygasła. Zaloguj się ponownie (Ustawienia).')
     if status != 200 or not isinstance(data, dict) or not data:
@@ -335,10 +331,6 @@ def _walk(node, out, tokens):
             if tok:
                 tokens.append(tok)
             continue
-        elif key in ('nextContinuationData', 'nextRadioContinuationData') and isinstance(val, dict):
-            if val.get('continuation'):  # starszy zapis kolejnych stron: playlisty i kolejki odtwarzania
-                tokens.append(val['continuation'])
-            continue
         elif isinstance(val, (dict, list)):
             _walk(val, out, tokens)
             continue
@@ -369,26 +361,8 @@ def _list(endpoint, body, tv=False):
     except Exception as e:
         ytlog.log('[YTDark] blad parsera:', e)
         raise YTError(u'Nie udało się odczytać odpowiedzi YouTube (zmienił się format).')
-    ytlog.log('[YTDark] lista %s: %d pozycji, kolejna strona: %s' % (endpoint, len(items), 'tak' if token else 'nie'))
     if items and token:
         items.append(_more_item(lambda: _list(endpoint, {'continuation': token}, tv)))
-    return items
-
-
-def _follow(items, pages=4):
-    """Doczytuje kolejne strony od razu (np. playlista 18 filmow oddana w dwoch partiach po 9),
-    zeby uzytkownik nie musial szukac pozycji 'Wczytaj wiecej'. Przy bledzie zostawia to, co jest."""
-    while pages > 0 and items and items[-1].get('kind') == 'more':
-        more = items.pop()
-        try:
-            nxt = more['more']()
-        except YTError as e:
-            ytlog.log('[YTDark] doczytywanie strony: %s' % (e,))
-            items.append(more)
-            break
-        seen = set((i['kind'], i['id']) for i in items if i.get('kind') != 'more')
-        items += [i for i in nxt if i.get('kind') == 'more' or (i['kind'], i['id']) not in seen]
-        pages -= 1
     return items
 
 
@@ -415,43 +389,14 @@ def trending():
     return home()
 
 
-def _playlist_via_next(playlist_id):
-    """Playlisty bez zwyklej strony (Mix 'RD...', czesc list automatycznych) otwiera sie jak kolejke odtwarzania."""
-    body = {'playlistId': playlist_id}
-    if (playlist_id.startswith('RD') and len(playlist_id) == 13
-            and playlist_id[2:4] not in ('MM', 'EM', 'QM', 'CL', 'GM', 'AM')):  # 'RD' + id filmu, z ktorego startuje Mix
-        body['videoId'] = playlist_id[2:]
-    return _list('next', body)
-
-
-def playlist_items(playlist_id, expand=True):
-    """expand=True: doczytuje do kilku stron (dla playlist); kanaly maja setki filmow - tam zostaje 'Wczytaj wiecej'."""
-    def done(items):
-        return _follow(items) if expand else items
-    if playlist_id.startswith('RD'):  # Mix: strona playlisty nie istnieje (zwraca blad 400)
-        return done(_playlist_via_next(playlist_id))
-    error = None
-    try:
-        items = _list('browse', {'browseId': 'VL' + playlist_id})
-        if items:
-            return done(items)
-    except YTError as e:
-        error = e
-    try:  # zapas: ta sama playlista jako kolejka odtwarzania
-        items = _playlist_via_next(playlist_id)
-        if items:
-            return done(items)
-    except YTError as e:
-        error = error or e
-    if error:
-        raise error
-    return []
+def playlist_items(playlist_id):
+    return _list('browse', {'browseId': 'VL' + playlist_id})
 
 
 def channel_videos(channel_id):
     # playlista "przeslane" kanalu ma id kanalu z UC -> UU
     if channel_id.startswith('UC'):
-        return playlist_items('UU' + channel_id[2:], expand=False)
+        return playlist_items('UU' + channel_id[2:])
     return _list('browse', {'browseId': channel_id, 'params': 'EgZ2aWRlb3PyBgQKAjoA'})
 
 

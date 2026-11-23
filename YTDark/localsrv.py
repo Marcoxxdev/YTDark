@@ -29,10 +29,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/vnd.apple.mpegurl')
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
-        try:
-            self.wfile.write(data)
-        except (IOError, OSError):
-            pass  # odtwarzacz zamknal polaczenie - normalne
+        self.wfile.write(data)
 
     def log_message(self, *args):
         pass
@@ -41,9 +38,6 @@ class _Handler(BaseHTTPRequestHandler):
 class _Server(ThreadingMixIn, HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
-
-    def handle_error(self, request, client_address):
-        pass  # bez zrzutow wyjatkow do logu Enigmy
 
 
 def put(name, text):
@@ -58,6 +52,6 @@ def put(name, text):
         if name not in _files:
             _order.append(name)
         _files[name] = text
-        while len(_order) > 200:
+        while len(_order) > 60:
             _files.pop(_order.pop(0), None)
         return 'http://127.0.0.1:%d/%s' % (_srv.server_address[1], name)

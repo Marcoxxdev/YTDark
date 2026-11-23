@@ -165,20 +165,3 @@ def search(width):
                     ('key_yellow', '#d4a72c'), ('key_blue', '#2f6fbf')))
     L.append('</screen>')
     return '\n'.join(L)
-
-
-def toast(width, lines, accent):
-    """Powiadomienie nad ekranem: ciemny panel z kolorowym paskiem po lewej, tekst do kilku linii."""
-    b = _B(width)
-    w, h = 1120, 40 + lines * 40
-    x, y = (1920 - w) // 2, 48
-    L = ['<screen name="YTDarkToast" position="%s" size="%s" title="YTDark" backgroundColor="transparent" '
-         'flags="wfNoBorder">' % (b.pos(x, y), b.size(w, h)),
-         b.rect(0, 0, w, h, BORDER, 0),
-         b.rect(2, 2, w - 4, h - 4, PANEL, 1),
-         b.rect(2, 2, 12, h - 4, accent, 2),
-         '<widget name="text" position="%s" size="%s" font="%s" foregroundColor="%s" backgroundColor="%s" '
-         'transparent="1" halign="left" valign="center" zPosition="4" />' % (
-             b.pos(36, 10), b.size(w - 60, h - 20), b.font(28), TXT, PANEL),
-         '</screen>']
-    return '\n'.join(L)

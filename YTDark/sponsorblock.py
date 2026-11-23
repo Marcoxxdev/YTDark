@@ -4,30 +4,21 @@ sponsor.ajay.app). Zapytanie wysylane jest przez prefiks hasha ID filmu (prywatn
 from __future__ import print_function
 import hashlib
 import json
-import time
 
 from . import net
 
 API = 'https://sponsor.ajay.app/api/skipSegments/%s'
 CATEGORIES = ['sponsor', 'selfpromo', 'interaction']
-CACHE_TTL = 30 * 60
-_cache = {}
 
 
 def segments(video_id):
     """Lista (start, koniec, kategoria) w sekundach; pusta lista przy braku danych/bledzie."""
-    hit = _cache.get(video_id)
-    if hit and time.time() - hit[0] < CACHE_TTL:
-        return hit[1]
     prefix = hashlib.sha256(video_id.encode('utf-8')).hexdigest()[:4]
     url = API % prefix + '?' + net.urlencode({
         'categories': json.dumps(CATEGORIES), 'actionTypes': json.dumps(['skip'])})
     try:
         status, data = net.get_json(url, timeout=6)
     except Exception:
-        return []
-    if status == 404:  # brak segmentow dla tego filmu - tez jest odpowiedzia
-        _cache[video_id] = (time.time(), [])
         return []
     if status != 200 or not isinstance(data, list):
         return []
@@ -39,8 +30,4 @@ def segments(video_id):
             sp = seg.get('segment') or []
             if len(sp) == 2 and sp[1] > sp[0]:
                 out.append((float(sp[0]), float(sp[1]), seg.get('category', '')))
-    out = sorted(out)
-    if len(_cache) > 100:
-        _cache.clear()
-    _cache[video_id] = (time.time(), out)
-    return out
+    return sorted(out)

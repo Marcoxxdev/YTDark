@@ -71,32 +71,11 @@ def channel_videos(channel_id):
     return _run(lambda: innertube.channel_videos(channel_id), lambda: api.channel_videos(channel_id))
 
 
-def _first(*attempts):
-    """Pierwsza metoda, ktora zwroci pozycje; przy bledach zwraca ostatni blad."""
-    last = None
-    for fn in attempts:
-        try:
-            items = fn()
-            if items:
-                return items
-        except YTError as e:
-            last = e
-        except Exception as e:
-            last = YTError(u'Nie udało się odczytać odpowiedzi YouTube (%s).' % (e,))
-    if last:
-        raise last
-    return []
-
-
 def playlist_items(playlist_id):
-    """Publiczne playlisty (takze Mixy) otwieramy zwyklym zapytaniem - daje pelna liste i dziala bez konta.
-    Klient TV (konto) jest tylko zapasem: pokazuje prywatne playlisty, ale oddaje je partiami i nie otwiera Mixow."""
-    attempts = [lambda: innertube.playlist_items(playlist_id)]
-    if auth.is_tv():
-        attempts.append(lambda: innertube.tv_first('VL' + playlist_id))
-    if _official_ready():
-        attempts.append(lambda: api.playlist_items(playlist_id))
-    return _first(*attempts)
+    if auth.is_tv():  # takze prywatne playlisty konta
+        return _run(lambda: innertube.tv_first('VL' + playlist_id),
+                    lambda: innertube.playlist_items(playlist_id))
+    return _run(lambda: innertube.playlist_items(playlist_id), lambda: api.playlist_items(playlist_id))
 
 
 def local_items(entries):
