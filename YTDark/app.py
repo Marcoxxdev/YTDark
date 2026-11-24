@@ -132,6 +132,11 @@ def make_entry(item, width):
 class HubList(Screen):
     """Uniwersalna lista (menu, kategorie, filmy...) z sortowaniem, filtrem i 'wczytaj wiecej'."""
 
+    # Screen.doClose() czysci __dict__ zamknietego ekranu - domyslna wartosc na poziomie klasy chroni
+    # spozniony callback (np. po wyjsciu z listy w trakcie dlugiego pobierania) przed AttributeError
+    alive = False
+    opening = False
+
     def __init__(self, session, title, subtitle, items=None, loader=None, on_ok=None,
                  sorts=('orig',), sort='orig', favmode=False, green_label=u'Otwórz'):
         Screen.__init__(self, session)
@@ -306,7 +311,7 @@ class HubList(Screen):
         self.pf_timer.stop()
         item = self.current()
         if (config.get('prefetch') and item and item.get('kind') == 'video' and item.get('id')
-                and not item.get('live')):
+                and not item.get('live') and resolver.last_seconds[0] <= PREFETCH_MAX_COST):
             self.pf_timer.start(PREFETCH_DWELL_MS, True)
 
     def prefetch_current(self):
@@ -460,6 +465,7 @@ class HubList(Screen):
 
 # ================================================================== logowanie
 class LoginScreen(Screen):
+    alive = False
     def show_notice(self, text, error=False, secs=5):
         self['status'].setText(text)
 
@@ -565,6 +571,7 @@ def open_login(session, after=None, login_mode='own'):
 
 
 # ================================================================== odtwarzacz
+PREFETCH_MAX_COST = 15.0    # jesli ostatnie pobranie trwalo dluzej (s), podgladu w tle nie robimy
 PREFETCH_DWELL_MS = 1800   # tyle zaznaczony film musi "poczekac", zanim przygotujemy go w tle
 _prefetch_busy = [False]
 
@@ -626,6 +633,7 @@ BAR_WIDGETS = ('panel', 'accent', 'p_title', 'p_sub', 'p_state', 'progress', 'p_
 
 
 class YTPlayer(Screen):
+    alive = False
     """Wlasny ekran odtwarzania nad odtwarzaczem dekodera: pasek z tytulem i kanalem, Play/Pauza/Stop,
     przeskoki 10/30 s, zmiana jakosci w trakcie, wznawianie, nastepny film, SponsorBlock."""
 
@@ -1045,6 +1053,10 @@ def start_player(session, item, stream, segments, streams=None, queue=None, orig
 
 
 def play_video(screen, item):
+    if screen.opening:  # drugie OK w trakcie pobierania uruchomiloby ten sam film dwa razy
+        screen.show_notice(u'Pobieranie strumienia już trwa…', False, 3)
+        return
+    screen.opening = True
     screen['sel'].setText(u'Pobieranie strumienia…')
 
     def work():
@@ -1052,6 +1064,7 @@ def play_video(screen, item):
 
     def got(result):
         streams, segs = result
+        screen.opening = False
         if not screen.alive:
             return
         screen.sel_changed()
@@ -1068,6 +1081,7 @@ def play_video(screen, item):
             items=[{'name': s['name'], 'stream': s, 'kind': 'stream'} for s in streams], on_ok=ok)
 
     def fail(err):
+        screen.opening = False
         ytlog.log('[YTDark] blad strumienia:', err)
         if screen.alive:
             screen.sel_changed()
@@ -1167,6 +1181,7 @@ class KbMenu(MenuList):
 
 
 class SearchScreen(Screen):
+    alive = False
     """Pole tekstowe + wlasna klawiatura ekranowa + podpowiedzi YouTube na zywo."""
 
     def __init__(self, session):

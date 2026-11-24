@@ -65,6 +65,35 @@ def _streams_from_info(info, video_id):
     return out
 
 
+last_seconds = [0.0]   # czas ostatniego (nie z pamieci podrecznej) pobrania strumienia - do decyzji o podgladzie w tle
+_ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
+
+class _YtdlpLog(object):
+    """Logger przekazywany do yt-dlp: do ytdark.log trafia kazdy krok z czasem od startu - widac, co trwa."""
+
+    def __init__(self):
+        self.t0 = time.time()
+
+    def _put(self, prefix, msg):
+        msg = _ANSI.sub('', u'%s' % (msg,)).strip()
+        if msg:
+            ytlog.log('[YTDark] yt-dlp +%.1fs %s%s' % (time.time() - self.t0, prefix, msg[:170]))
+
+    def debug(self, msg):
+        if not (u'%s' % (msg,)).startswith('[debug]'):
+            self._put('', msg)
+
+    def info(self, msg):
+        self._put('', msg)
+
+    def warning(self, msg):
+        self._put('! ', msg)
+
+    def error(self, msg):
+        self._put('!! ', msg)
+
+
 _ytdlp_error = [u'']   # tekst ostatniego bledu yt-dlp (do rozpoznania ograniczenia wiekowego)
 
 
@@ -79,7 +108,8 @@ def via_ytdlp(video_id):
     if mod is None:
         return None
     _ytdlp_error[0] = u''
-    opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'noplaylist': True, 'socket_timeout': 15}
+    opts = {'quiet': True, 'skip_download': True, 'noplaylist': True, 'logger': _YtdlpLog(),
+            'socket_timeout': 10, 'retries': 1, 'extractor_retries': 1}
     t0 = time.time()
     try:
         with mod.YoutubeDL(opts) as ydl:
@@ -276,6 +306,7 @@ def _resolve_uncached(video_id):
             continue
         if streams:
             ytlog.log('[YTDark] resolve %s przez %s: %.1f s' % (video_id, name, time.time() - t0))
+            last_seconds[0] = time.time() - t0
             if config.get('resolver_first') != name:
                 config.put('resolver_first', name)
             streams.sort(key=lambda s: (-s['height'], s['kind']))

@@ -1,5 +1,13 @@
 # Historia zmian
 
+## [2.5.6]
+- Naprawiono błąd `'HubList' object has no attribute 'alive'`: gdy użytkownik wyszedł z listy w trakcie długiego pobierania
+  strumienia, spóźniony wynik trafiał do zamkniętego ekranu (Enigma czyści jego atrybuty).
+- Drugie OK w trakcie pobierania strumienia nie uruchamia już tego samego filmu drugi raz.
+- Diagnostyka wolnego yt-dlp: każdy krok ekstrakcji trafia do `/tmp/ytdark.log` z czasem (`yt-dlp +12.3s …`);
+  krótsze limity czasu i mniej ponowień (socket_timeout 10 s, 1 ponowienie).
+- Podgląd w tle wyłącza się sam, gdy ostatnie pobieranie strumienia trwało dłużej niż 15 s.
+
 ## [2.5.5]
 - Komunikaty (np. „film dostępny tylko w wersji premium”, błędy, postęp instalacji) wyświetlają się wprost w ekranie pluginu
   przez ok. 5 s (dłuższe teksty dłużej): na liście w miejscu „Pobieranie strumienia…”, w wyszukiwaniu pod tytułem,
