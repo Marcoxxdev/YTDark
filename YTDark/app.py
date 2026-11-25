@@ -50,7 +50,7 @@ except Exception:
     ServiceEventTracker = None
 
 from . import ytlog
-from . import __version__, api, auth, config, suggest, update, ytdlp_setup, innertube, resolver, skins, source, sponsorblock, thumbs, util
+from . import __version__, api, auth, config, deps, suggest, update, ytdlp_setup, innertube, resolver, skins, source, sponsorblock, thumbs, util
 from .net import YTError
 
 WIDTH = getDesktop(0).size().width()
@@ -595,8 +595,8 @@ def load_bundle(item):
 
 
 def exteplayer3_available():
-    return any(os.path.exists(x) for x in ('/usr/bin/exteplayer3',
-                                           '/usr/lib/enigma2/python/Plugins/SystemPlugins/ServiceApp'))
+    """Usluga 5002 dziala tylko z pluginem ServiceApp + programem exteplayer3 (sam program nie wystarcza)."""
+    return deps.exteplayer3_ready()
 
 
 def player_type():
@@ -614,11 +614,11 @@ def player_label():
     return u'automatycznie (%s)' % names[player_type()]
 
 
-def make_ref(item, stream):
+def make_ref(item, stream, ptype=None):
     url = stream['url']
     if stream.get('ua'):  # googlevideo odrzuca zapytania z innym User-Agent
         url += '#User-Agent=' + stream['ua']
-    ref = eServiceReference(player_type(), 0, url)
+    ref = eServiceReference(ptype or player_type(), 0, url)
     ref.setName(item['name'])
     return ref
 
@@ -653,6 +653,9 @@ class YTPlayer(Screen):
         self.loading_next = False
         self.warned = False
         self.pending_seek = None
+        self.player_override = None   # chwilowa zmiana odtwarzacza (gdy pierwszy nie wystartowal)
+        self.player_switched = False
+        self.save_player = None
         self.skipped = set()
         self.lastpos, self.stall, self.age = -1.0, 0, 0
         for name in BAR_WIDGETS:
@@ -747,7 +750,7 @@ class YTPlayer(Screen):
         self.lastpos, self.stall, self.age = -1.0, 0, 0
         self.paused = False
         self.pending_seek = resume_at
-        self.session.nav.playService(make_ref(self.item, stream))
+        self.session.nav.playService(make_ref(self.item, stream, self.player_override))
         self.refresh_texts()
         self.show_bar()
         if resume_at:
@@ -873,10 +876,17 @@ class YTPlayer(Screen):
             self.started = True
         if not self.started:
             self['p_state'].setText(u'Ładowanie…')
-            if self.age == 60 and not self.warned:  # 30 s bez obrazu
+            if self.age == 50 and not self.player_switched:  # 25 s bez obrazu: probujemy drugiego odtwarzacza
+                self.try_other_player()
+            elif self.age == 60 and not self.warned:  # 30 s bez obrazu
                 self.warned = True
                 self.msg(u'Strumień nie startuje - Niebieski: inna jakość, Next: kolejny film')
             return
+        if self.save_player:  # drugi odtwarzacz zadzialal - zapamietujemy wybor
+            config.put('player_type', self.save_player)
+            popup(self.session, u'Odtwarzacz %s działa - zapamiętano jako domyślny.' % (
+                u'exteplayer3' if self.save_player == 5002 else u'gstreamer'))
+            self.save_player = None
         if self.pending_seek:
             sk = self.seeker()
             if sk and (length or live is False):
@@ -948,6 +958,7 @@ class YTPlayer(Screen):
                 self.played.append(self.item)
             self.item, self.streams, self.segments = item, streams, segs
             self.last_id = item['id']
+            self.player_switched = False
             stream = resolver.pick(streams, self.stream.get('height') or config.get('max_height') or 720) \
                 or streams[0]
             config.add_history(item)
@@ -983,6 +994,19 @@ class YTPlayer(Screen):
             return
         self.queue.insert(0, self.item)
         self.load_item(self.played.pop(), push=False)
+
+    def try_other_player(self):
+        """Pierwszy odtwarzacz nie ruszyl w 25 s (np. brak ServiceApp / HLS w gstreamerze) - proba drugim."""
+        self.player_switched = True
+        current = self.player_override or player_type()
+        alt = 4097 if current == 5002 else (5002 if exteplayer3_available() else None)
+        if alt is None:
+            return
+        ytlog.log('[YTDark] odtwarzacz %s nie wystartowal - probuje %s' % (current, alt))
+        self.player_override = alt
+        self.save_player = alt
+        self.play_stream(self.stream, resume_at=self.pending_seek)
+        self.msg(u'Odtwarzacz nie wystartował - próbuję %s…' % (u'gstreamer' if alt == 4097 else u'exteplayer3'), 6)
 
     def toggle_autoplay(self):
         config.put('autoplay', not config.get('autoplay'))
@@ -1489,8 +1513,10 @@ def settings_items():
          'kind': 'set_rollback'},
         {'name': u'yt-dlp: ' + (u'zainstalowany' if ytdlp_setup.installed() else u'niezainstalowany'),
          'sub': u'OK: zainstaluj lub zaktualizuj (opkg install python3-yt-dlp)', 'kind': 'set_ytdlp'},
-        {'name': u'Pytaj o yt-dlp przy starcie: ' + (u'TAK' if config.get('ytdlp_prompt') else u'NIE'),
-         'sub': u'Gdy yt-dlp nie jest zainstalowany', 'kind': 'set_ytdlp_prompt'},
+        {'name': u'Sprawdź wymagane pakiety',
+         'sub': u'Odtwarzacz HLS, yt-dlp, certyfikaty - z propozycją instalacji (opkg)', 'kind': 'set_deps'},
+        {'name': u'Sprawdzaj pakiety przy starcie: ' + (u'TAK' if config.get('ytdlp_prompt') else u'NIE'),
+         'sub': u'Pyta raz na 3 dni, gdy czegoś brakuje', 'kind': 'set_ytdlp_prompt'},
         {'name': u'Pobieranie strumienia: ' + {'auto': u'automatycznie', 'ytdlp': u'najpierw yt-dlp',
                                                 'own': u'najpierw własne (szybkie)'}.get(config.get('resolver_mode'), u'automatycznie'),
          'sub': u'Automat wybiera szybszą metodę; zmień, gdy film się nie odtwarza', 'kind': 'set_resolver'},
@@ -1545,6 +1571,9 @@ def open_settings(session, home_screen):
             config.put('prefetch', not config.get('prefetch'))
         elif kind == 'set_ytdlp':
             check_ytdlp(session, manual=True)
+            return
+        elif kind == 'set_deps':
+            check_deps(session, manual=True)
             return
         elif kind == 'set_ytdlp_prompt':
             config.put('ytdlp_prompt', not config.get('ytdlp_prompt'))
@@ -1685,6 +1714,53 @@ def install_update(session, info):
     d.addErrback(fail)
 
 
+# ================================================================== wymagane pakiety
+DEPS_ASK_EVERY = 3 * 24 * 3600
+
+
+def deps_install(session, problems):
+    popup(session, u'Instaluję brakujące pakiety w tle (opkg) - możesz dalej korzystać z pluginu.', None, 6)
+
+    def got(result):
+        ok, summary, restart = result
+        popup(session, (u'Gotowe.\n' if ok else u'Nie wszystko się udało.\n') + summary,
+              MessageBox.TYPE_INFO if ok else MessageBox.TYPE_ERROR, 12)
+        if restart:
+            ask_restart(session, u'Zainstalowano składniki odtwarzacza.')
+
+    def fail(err):
+        ytlog.log('[YTDark] instalacja pakietow:', err)
+        popup(session, u'Instalacja pakietów nie powiodła się:\n' + err_text(err), MessageBox.TYPE_ERROR, 12)
+    d = threads.deferToThread(deps.install, problems)
+    d.addCallback(got)
+    d.addErrback(fail)
+
+
+def check_deps(session, manual=False):
+    """Sprawdza wymagane pakiety i - za zgoda - instaluje braki. Automatycznie pyta najwyzej raz na 3 dni."""
+    if not manual and time.time() - float(config.get('deps_asked') or 0) < DEPS_ASK_EVERY:
+        return
+
+    def got(problems):
+        if not problems:
+            if manual:
+                popup(session, u'Wszystkie wymagane pakiety są zainstalowane \u2714', MessageBox.TYPE_INFO, 5)
+            return
+        config.put('deps_asked', int(time.time()))
+        text = u'Wykryto braki w systemie:\n\n' + deps.describe(problems)
+        if not deps.can_install():
+            session.open(MessageBox, text + u'\n\nTen obraz nie pozwala na instalację przez opkg - doinstaluj ręcznie.',
+                         MessageBox.TYPE_INFO)
+            return
+        session.openWithCallback(
+            lambda yes: deps_install(session, problems) if yes else None, MessageBox,
+            text + u'\n\nZainstalować teraz? Instalacja trwa w tle, plugin działa dalej.', MessageBox.TYPE_YESNO)
+
+    d = threads.deferToThread(deps.scan)
+    d.addCallback(got)
+    d.addErrback(lambda e: ytlog.log('[YTDark] skan pakietow:', e))
+
+
 # ================================================================== yt-dlp
 _notice_screens = []   # ekrany pluginu, ktore umieja pokazac komunikat (ostatni = ten na wierzchu)
 
@@ -1771,9 +1847,11 @@ def main(session, **kwargs):
         config.import_credentials()  # opcjonalne: tylko dla logowania do konta
     session.open(HubList, u'YTDark', u'YouTube bez reklam \u2022 v%s' % __version__, items=home_items(),
                  on_ok=home_ok)
+    ytlog.log('[YTDark] ' + deps.environment())
+
     def next_step():
         if config.get('ytdlp_prompt'):
-            check_ytdlp(session)
+            check_deps(session)
 
     if config.get('update_check') and update.enabled():
         check_updates(session, after=next_step)

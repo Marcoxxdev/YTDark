@@ -1,5 +1,16 @@
 # Historia zmian
 
+## [2.6.0]
+- Sprawdzanie wymaganych pakietów (Ustawienia → „Sprawdź wymagane pakiety” oraz raz na 3 dni przy starcie):
+  odtwarzacz HLS (ServiceApp + exteplayer3 albo gstreamer z HLS), yt-dlp, certyfikaty HTTPS, moduły Pythona.
+  Braki są instalowane przez opkg w tle i tylko za zgodą; dla każdego braku sprawdzane jest, który pakiet
+  istnieje w repozytorium danego obrazu.
+- Poprawione wykrywanie exteplayer3: usługa 5002 działa dopiero z pluginem ServiceApp (wcześniej wystarczał sam program,
+  przez co na niektórych obrazach film się pobierał, ale nigdy nie startował).
+- Automatyczne przełączenie odtwarzacza: gdy wybrany nie wystartuje w 25 s, plugin próbuje drugiego i zapamiętuje ten,
+  który zadziałał.
+- Na początku `/tmp/ytdark.log` zapisuje się linia „srodowisko: …” (wersja Pythona, obraz, odtwarzacze, yt-dlp, opkg).
+
 ## [2.5.7]
 - Wolny yt-dlp (kilkadziesiąt sekund czystej pracy procesora przy rozwiązywaniu skryptów JS YouTube): plugin zapamiętuje
   czas jego pracy i gdy przekracza 20 s, najpierw używa własnych klientów (ok. 1-3 s), a yt-dlp zostaje zapasem

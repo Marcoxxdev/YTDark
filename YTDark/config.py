@@ -13,7 +13,7 @@ DEFAULTS = {
     'client_id': '', 'client_secret': '', 'api_key': '',
     'region': 'PL', 'sponsorblock': True, 'max_height': 720, 'player_type': 0,
     'tokens': {}, 'favs': [], 'history': [], 'searches': [], 'thumbs': True,
-    'resume': {}, 'resume_on': True, 'autoplay': True, 'main_menu': False, 'update_check': True, 'ytdlp_prompt': True, 'update_last': 0, 'prefetch': True, 'resolver_first': None, 'ytdlp_secs': 0, 'resolver_mode': 'auto',
+    'resume': {}, 'resume_on': True, 'autoplay': True, 'main_menu': False, 'update_check': True, 'ytdlp_prompt': True, 'update_last': 0, 'prefetch': True, 'resolver_first': None, 'ytdlp_secs': 0, 'resolver_mode': 'auto', 'deps_asked': 0,
 }
 _cache = {}
 

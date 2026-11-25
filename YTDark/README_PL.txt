@@ -65,6 +65,9 @@ SZYBKOSC: zaznaczony na ~2 s film jest przygotowywany w tle (Ustawienia -> Wczyt
   z wyprzedzeniem), wiec OK dziala od razu. Gdy interfejs zacina sie podczas przegladania listy,
   wylacz te opcje. Czasy pobierania (yt-dlp / playlista HLS) sa w /tmp/ytdark.log.
 
+PAKIETY: Ustawienia -> "Sprawdz wymagane pakiety" sprawdza odtwarzacz HLS, yt-dlp i certyfikaty i - za zgoda -
+  instaluje braki przez opkg (w tle). Gdy wybrany odtwarzacz nie wystartuje w 25 s, plugin sam probuje drugiego.
+
 DZIENNIK: plugin zapisuje wlasny log w /tmp/ytdark.log (np. przez FTP/telnet:
   cat /tmp/ytdark.log) - nie wymaga wlaczania logow debug.
 
