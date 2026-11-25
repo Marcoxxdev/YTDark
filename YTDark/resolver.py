@@ -7,6 +7,7 @@ Kolejnosc prob:
     najczesciej - przy zmianie wystarczy poprawic stale ponizej."""
 from __future__ import print_function
 
+import os
 import re
 import threading
 import time
@@ -94,7 +95,23 @@ class _YtdlpLog(object):
         self._put('!! ', msg)
 
 
+YTDLP_SLOW = 20.0              # s: jesli yt-dlp trwal dluzej, najpierw probujemy szybkich wlasnych klientow
+_innertube_blocked_until = [0.0]   # po blokadzie "bota" przez jakis czas nie tracimy czasu na wlasnych klientow
 _ytdlp_error = [u'']   # tekst ostatniego bledu yt-dlp (do rozpoznania ograniczenia wiekowego)
+
+
+def _ytdlp_cache_dir():
+    """Stala, zapisywalna pamiec podreczna yt-dlp (wyniki rozwiazywania skryptow JS odtwarzacza).
+    Plugin dziala w procesie Enigmy, gdzie domyslny katalog (~/.cache) bywa niezapisywalny."""
+    for path in ('/etc/enigma2/ytdlp_cache', '/tmp/ytdlp_cache'):
+        try:
+            if not os.path.isdir(path):
+                os.makedirs(path)
+            if os.access(path, os.W_OK):
+                return path
+        except Exception:
+            continue
+    return None
 
 
 def via_ytdlp(video_id):
@@ -110,6 +127,9 @@ def via_ytdlp(video_id):
     _ytdlp_error[0] = u''
     opts = {'quiet': True, 'skip_download': True, 'noplaylist': True, 'logger': _YtdlpLog(),
             'socket_timeout': 10, 'retries': 1, 'extractor_retries': 1}
+    cache = _ytdlp_cache_dir()
+    if cache:
+        opts['cachedir'] = cache
     t0 = time.time()
     try:
         with mod.YoutubeDL(opts) as ydl:
@@ -288,13 +308,27 @@ def is_cached(video_id):
     return bool(hit and time.time() - hit[0] < CACHE_TTL)
 
 
-def _resolve_uncached(video_id):
-    methods = {'ytdlp': via_ytdlp, 'innertube': via_innertube}
+def _method_order():
+    methods = ('ytdlp', 'innertube')
+    mode = config.get('resolver_mode')  # reczny wybor w Ustawieniach: 'ytdlp' / 'own'; inaczej automat
+    if mode == 'ytdlp':
+        return ['ytdlp', 'innertube']
+    if mode == 'own':
+        return ['innertube', 'ytdlp']
     # zapamietujemy, ktora metoda dzialala ostatnio, i nia zaczynamy (nie tracimy czasu na odrzucane)
     first = config.get('resolver_first')
     if first not in methods:
         first = 'ytdlp' if ytdlp_setup.installed() else 'innertube'
-    order = [first] + [m for m in ('ytdlp', 'innertube') if m != first]
+    # yt-dlp potrafi liczyc kilkadziesiat sekund (rozwiazywanie skryptow JS YouTube na slabym procesorze) -
+    # wtedy wlasni klienci (ok. 1-3 s) idą pierwsi, a yt-dlp zostaje zapasem (np. dla filmow z ograniczeniem wieku)
+    if (float(config.get('ytdlp_secs') or 0) > YTDLP_SLOW and time.time() > _innertube_blocked_until[0]):
+        first = 'innertube'
+    return [first] + [m for m in methods if m != first]
+
+
+def _resolve_uncached(video_id):
+    methods = {'ytdlp': via_ytdlp, 'innertube': via_innertube}
+    order = _method_order()
     last_error = None
     for name in order:
         t0 = time.time()
@@ -303,10 +337,16 @@ def _resolve_uncached(video_id):
         except YTError as e:
             last_error = e
             ytlog.log('[YTDark] %s: %s (%.1f s)' % (name, e, time.time() - t0))
+            if name == 'innertube' and str(e).startswith(BOT_HELP[:30]):
+                _innertube_blocked_until[0] = time.time() + 600  # 10 min bez prob wlasnych klientow
             continue
         if streams:
             ytlog.log('[YTDark] resolve %s przez %s: %.1f s' % (video_id, name, time.time() - t0))
             last_seconds[0] = time.time() - t0
+            if name == 'ytdlp':  # zapamietujemy czas yt-dlp (tez po restarcie), zeby wiedziec, czy jest wolny
+                old = float(config.get('ytdlp_secs') or 0)
+                if abs(last_seconds[0] - old) > 5:
+                    config.put('ytdlp_secs', round(last_seconds[0], 1))
             if config.get('resolver_first') != name:
                 config.put('resolver_first', name)
             streams.sort(key=lambda s: (-s['height'], s['kind']))

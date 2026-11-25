@@ -98,6 +98,11 @@ def install_or_upgrade():
             pass
         if not installed():
             return False, u'Pakiet zainstalowany, ale moduł yt_dlp nie jest widoczny - zrestartuj interfejs.'
+        try:  # nowa wersja moze byc szybsza - zmierzymy ja od nowa
+            from . import config
+            config.put('ytdlp_secs', 0)
+        except Exception:
+            pass
         ver = version()
         return True, (u'yt-dlp %s.' % (u'zaktualizowany' if was else u'zainstalowany')) + \
             (u' Wersja pakietu: %s.' % ver if ver else u'')

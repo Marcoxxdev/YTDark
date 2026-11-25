@@ -1,5 +1,13 @@
 # Historia zmian
 
+## [2.5.7]
+- Wolny yt-dlp (kilkadziesiąt sekund czystej pracy procesora przy rozwiązywaniu skryptów JS YouTube): plugin zapamiętuje
+  czas jego pracy i gdy przekracza 20 s, najpierw używa własnych klientów (ok. 1-3 s), a yt-dlp zostaje zapasem
+  (m.in. dla filmów z ograniczeniem wiekowym). Po aktualizacji yt-dlp pomiar jest zerowany.
+- Nowe ustawienie „Pobieranie strumienia”: automatycznie / najpierw własne (szybkie) / najpierw yt-dlp.
+- yt-dlp dostaje stały, zapisywalny katalog pamięci podręcznej (`/etc/enigma2/ytdlp_cache`).
+- Po zablokowaniu własnych klientów przez YouTube plugin przez 10 minut od razu używa yt-dlp.
+
 ## [2.5.6]
 - Naprawiono błąd `'HubList' object has no attribute 'alive'`: gdy użytkownik wyszedł z listy w trakcie długiego pobierania
   strumienia, spóźniony wynik trafiał do zamkniętego ekranu (Enigma czyści jego atrybuty).

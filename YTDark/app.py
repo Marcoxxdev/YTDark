@@ -1491,6 +1491,9 @@ def settings_items():
          'sub': u'OK: zainstaluj lub zaktualizuj (opkg install python3-yt-dlp)', 'kind': 'set_ytdlp'},
         {'name': u'Pytaj o yt-dlp przy starcie: ' + (u'TAK' if config.get('ytdlp_prompt') else u'NIE'),
          'sub': u'Gdy yt-dlp nie jest zainstalowany', 'kind': 'set_ytdlp_prompt'},
+        {'name': u'Pobieranie strumienia: ' + {'auto': u'automatycznie', 'ytdlp': u'najpierw yt-dlp',
+                                                'own': u'najpierw własne (szybkie)'}.get(config.get('resolver_mode'), u'automatycznie'),
+         'sub': u'Automat wybiera szybszą metodę; zmień, gdy film się nie odtwarza', 'kind': 'set_resolver'},
         {'name': u'Wczytywanie z wyprzedzeniem: ' + (u'TAK' if config.get('prefetch') else u'NIE'),
          'sub': u'Przygotowuje zaznaczony film w tle, żeby OK działało od razu', 'kind': 'set_prefetch'},
         {'name': u'Autoodtwarzanie następnego: ' + (u'TAK' if config.get('autoplay') else u'NIE'),
@@ -1534,6 +1537,10 @@ def open_settings(session, home_screen):
                 % (u'pojawi się' if config.get('main_menu') else u'zniknie'),
                 MessageBox.TYPE_YESNO)
             return
+        elif kind == 'set_resolver':
+            order = ['auto', 'own', 'ytdlp']
+            cur = config.get('resolver_mode')
+            config.put('resolver_mode', order[(order.index(cur) + 1) % 3] if cur in order else 'own')
         elif kind == 'set_prefetch':
             config.put('prefetch', not config.get('prefetch'))
         elif kind == 'set_ytdlp':
